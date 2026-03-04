@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Backend
+backend/.venv/
+backend/.pytest_cache/
+backend/bookwise.db
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Env files
+.env
+backend/.env
+frontend/.env
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+*.log

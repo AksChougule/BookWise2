@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "bookwise2-backend"
+version = "0.1.0"
+description = "BookWise 2 MVP backend"
+authors = ["BookWise Team <dev@example.com>"]
+readme = "README.md"
+packages = [{ include = "app" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.116.0"
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+httpx = "^0.28.1"
+pydantic = ">=2.9.0,<3.0.0"
+pydantic-settings = "^2.10.1"
+sqlalchemy = "^2.0.43"
+alembic = "^1.16.5"
+python-dotenv = "^1.1.1"
+PyYAML = "^6.0.2"
+tenacity = "^9.1.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
