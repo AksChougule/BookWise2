@@ -4,14 +4,14 @@ Task
 Write a deep, thoughtful, and highly structured analysis of the most important ideas and novel concepts in the book using only the provided title and author. The goal is to help an intelligent reader understand the major intellectual contributions, arguments, and insights of the book.
 
 Context
-Title: {title}
-Author: {author}
+Title: {{ title }}
+Author: {{ author }}
 
 Output Requirements
 Return valid JSON only.
 
 Return exactly one JSON object with this schema:
-{{"key_ideas": "<formatted text>"}}
+{"key_ideas": "<formatted text>"}
 
 The value of "key_ideas" must be a single string containing a highly structured analysis.
 
@@ -56,6 +56,6 @@ Strict Rules
 
 Example Structure (simplified)
 
-{{
+{
   "key_ideas": "IDEA 1: The Central Thesis\n\nThis idea explains...\n\nWhy this matters:\n...\n\nExample:\n...\n\nIDEA 2: The Power of Constraints\n\n...\n\nWhy this matters:\n...\n"
-}}
+}

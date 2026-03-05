@@ -133,6 +133,9 @@ class GenerationRepository:
         work_id: str,
         section: GenerationSection,
         content: str,
+        prompt_name: str | None,
+        prompt_version: str | None,
+        prompt_hash: str | None,
         model: str,
         tokens_prompt: int | None,
         tokens_completion: int | None,
@@ -142,6 +145,9 @@ class GenerationRepository:
         generation.status = GenerationStatus.COMPLETED
         generation.content = content
         generation.error_message = None
+        generation.prompt_name = prompt_name
+        generation.prompt_version = prompt_version
+        generation.prompt_hash = prompt_hash
         generation.model = model
         generation.tokens_prompt = tokens_prompt
         generation.tokens_completion = tokens_completion
@@ -166,12 +172,18 @@ class GenerationRepository:
         work_id: str,
         section: GenerationSection,
         error_message: str,
+        prompt_name: str | None,
+        prompt_version: str | None,
+        prompt_hash: str | None,
         model: str | None,
         generation_time_ms: int | None,
     ) -> Generation:
         generation = self.get_or_create(work_id, section)
         generation.status = GenerationStatus.FAILED
         generation.error_message = error_message
+        generation.prompt_name = prompt_name
+        generation.prompt_version = prompt_version
+        generation.prompt_hash = prompt_hash
         generation.model = model
         generation.generation_time_ms = generation_time_ms
         self.db.commit()

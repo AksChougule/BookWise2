@@ -35,6 +35,9 @@ class GenerationMeta(BaseModel):
     status: GenerationStatusOut
     section: SectionOut
     error_message: str | None = None
+    prompt_name: str | None = None
+    prompt_version: str | None = None
+    prompt_hash: str | None = None
     model: str | None = None
     tokens_prompt: int | None = None
     tokens_completion: int | None = None

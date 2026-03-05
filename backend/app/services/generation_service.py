@@ -12,6 +12,7 @@ from app.providers.openai_provider import OpenAIProvider
 from app.repositories.book_repo import BookRepository
 from app.repositories.generation_repo import GenerationRepository
 from app.schemas.generations import CritiqueOut, CritiquePayload, KeyIdeasOut, KeyIdeasPayload
+from app.services.prompt_store import PromptCompileError, PromptStore
 from app.utils.db import SessionLocal
 from app.utils.logging import now_ms
 
@@ -25,15 +26,13 @@ class GenerationService:
         self.generation_repo = GenerationRepository(db)
         self.provider = OpenAIProvider()
         self.prompt_dir = Path(__file__).resolve().parents[1] / "prompts"
+        self.prompt_store = PromptStore(self.prompt_dir)
 
     @staticmethod
     def _build_context(book: Book) -> tuple[str, str]:
         title = book.title.strip() if book.title else "Untitled"
         author = book.authors.strip() if book.authors else "Unknown"
         return title, author
-
-    def _load_prompt(self, filename: str) -> str:
-        return (self.prompt_dir / filename).read_text(encoding="utf-8")
 
     @staticmethod
     def _key_ideas_schema() -> dict:
@@ -92,6 +91,9 @@ class GenerationService:
             status=generation.status.value,
             section=generation.section.value,
             error_message=generation.error_message,
+            prompt_name=generation.prompt_name,
+            prompt_version=generation.prompt_version,
+            prompt_hash=generation.prompt_hash,
             model=generation.model,
             tokens_prompt=generation.tokens_prompt,
             tokens_completion=generation.tokens_completion,
@@ -108,6 +110,9 @@ class GenerationService:
             status=generation.status.value,
             section=generation.section.value,
             error_message=generation.error_message,
+            prompt_name=generation.prompt_name,
+            prompt_version=generation.prompt_version,
+            prompt_hash=generation.prompt_hash,
             model=generation.model,
             tokens_prompt=generation.tokens_prompt,
             tokens_completion=generation.tokens_completion,
@@ -198,14 +203,23 @@ class GenerationService:
                     work_id=work_id,
                     section=GenerationSection.KEY_IDEAS,
                     error_message="Book metadata not found. Open /api/books/{work_id} first.",
+                    prompt_name=None,
+                    prompt_version=None,
+                    prompt_hash=None,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
                 )
                 return
 
+            prompt_name = "key_ideas"
+            prompt_version: str | None = None
+            prompt_hash: str | None = None
             try:
                 title, author = self._build_context(book)
-                prompt = self._load_prompt("key_ideas.txt").format(title=title, author=author)
+                prompt_result = self.prompt_store.render(prompt_name, {"title": title, "author": author})
+                prompt = prompt_result.compiled_prompt
+                prompt_version = prompt_result.prompt_version
+                prompt_hash = prompt_result.prompt_hash
                 result = await self.provider.generate_structured(
                     prompt=prompt,
                     schema_name="key_ideas_response",
@@ -217,6 +231,9 @@ class GenerationService:
                     work_id=work_id,
                     section=GenerationSection.KEY_IDEAS,
                     content=payload.model_dump_json(),
+                    prompt_name=prompt_name,
+                    prompt_version=prompt_version,
+                    prompt_hash=prompt_hash,
                     model=result.model,
                     tokens_prompt=result.tokens_prompt,
                     tokens_completion=result.tokens_completion,
@@ -237,10 +254,16 @@ class GenerationService:
                     },
                 )
             except Exception as exc:  # noqa: BLE001
+                message = (
+                    f"{PromptCompileError.error_type}: {exc}" if isinstance(exc, PromptCompileError) else str(exc)
+                )
                 failed = generation_repo.mark_failed(
                     work_id=work_id,
                     section=GenerationSection.KEY_IDEAS,
-                    error_message=str(exc),
+                    error_message=message,
+                    prompt_name=prompt_name,
+                    prompt_version=prompt_version,
+                    prompt_hash=prompt_hash,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
                 )
@@ -270,6 +293,9 @@ class GenerationService:
                     work_id=work_id,
                     section=GenerationSection.CRITIQUE,
                     error_message="Cannot generate critique before key ideas are completed.",
+                    prompt_name=None,
+                    prompt_version=None,
+                    prompt_hash=None,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
                 )
@@ -281,14 +307,23 @@ class GenerationService:
                     work_id=work_id,
                     section=GenerationSection.CRITIQUE,
                     error_message="Book metadata not found.",
+                    prompt_name=None,
+                    prompt_version=None,
+                    prompt_hash=None,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
                 )
                 return
 
+            prompt_name = "critique"
+            prompt_version: str | None = None
+            prompt_hash: str | None = None
             try:
                 title, author = self._build_context(book)
-                prompt = self._load_prompt("critique.txt").format(title=title, author=author)
+                prompt_result = self.prompt_store.render(prompt_name, {"title": title, "author": author})
+                prompt = prompt_result.compiled_prompt
+                prompt_version = prompt_result.prompt_version
+                prompt_hash = prompt_result.prompt_hash
                 result = await self.provider.generate_structured(
                     prompt=prompt,
                     schema_name="critique_response",
@@ -300,6 +335,9 @@ class GenerationService:
                     work_id=work_id,
                     section=GenerationSection.CRITIQUE,
                     content=payload.model_dump_json(),
+                    prompt_name=prompt_name,
+                    prompt_version=prompt_version,
+                    prompt_hash=prompt_hash,
                     model=result.model,
                     tokens_prompt=result.tokens_prompt,
                     tokens_completion=result.tokens_completion,
@@ -320,10 +358,16 @@ class GenerationService:
                     },
                 )
             except Exception as exc:  # noqa: BLE001
+                message = (
+                    f"{PromptCompileError.error_type}: {exc}" if isinstance(exc, PromptCompileError) else str(exc)
+                )
                 failed = generation_repo.mark_failed(
                     work_id=work_id,
                     section=GenerationSection.CRITIQUE,
-                    error_message=str(exc),
+                    error_message=message,
+                    prompt_name=prompt_name,
+                    prompt_version=prompt_version,
+                    prompt_hash=prompt_hash,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
                 )
