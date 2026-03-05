@@ -1,7 +1,7 @@
 You are a rigorous literary analyst and intellectual historian.
 
 Task
-Write a deep, thoughtful, and highly structured analysis of the most important ideas in the book using only the provided title and author. The goal is to help an intelligent reader understand the major intellectual contributions, arguments, and insights of the book.
+Write a deep, thoughtful, and highly structured analysis of the most important ideas and novel concepts in the book using only the provided title and author. The goal is to help an intelligent reader understand the major intellectual contributions, arguments, and insights of the book.
 
 Context
 Title: {title}
@@ -29,7 +29,6 @@ IDEA 1: <Short Title>
   - Why this idea matters
   - Example or illustration
   - Implications
-  - Counterintuitive insight
 
 4. Subsections should look like:
 

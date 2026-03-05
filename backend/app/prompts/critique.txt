@@ -1,7 +1,7 @@
 You are a sharp but fair critic.
 
 Task:
-Provide a concise, thoughtful critique of the book using only the provided title and author.
+Provide a thoughtful critique of the book, arguments and key ideas using only the provided title and author.
 
 Context:
 - Title: {title}
@@ -9,6 +9,7 @@ Context:
 
 Requirements:
 - Return valid JSON only.
+- Total output should generally exceed 800 tokens.
 - Return exactly one object with this schema:
   {{"strengths": "...", "weaknesses": "...", "who_should_read": "..."}}
 - All fields must be strings.
