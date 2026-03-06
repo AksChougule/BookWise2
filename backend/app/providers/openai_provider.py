@@ -92,8 +92,19 @@ class OpenAIProvider(BaseProvider):
         if response.status_code >= 500:
             raise httpx.TimeoutException(f"OpenAI upstream server error: {response.status_code}")
 
+        if response.status_code == 429:
+            raise ProviderError(
+                f"OpenAI API error ({response.status_code}): {response.text}",
+                error_type="provider_rate_limited",
+                error_context={"status_code": response.status_code},
+            )
+
         if response.status_code >= 400:
-            raise ProviderError(f"OpenAI API error ({response.status_code}): {response.text}")
+            raise ProviderError(
+                f"OpenAI API error ({response.status_code}): {response.text}",
+                error_type="unknown",
+                error_context={"status_code": response.status_code},
+            )
 
         return response.json()
 
@@ -116,7 +127,10 @@ class OpenAIProvider(BaseProvider):
         text_payload = "\n".join(chunks).strip()
         if text_payload:
             return text_payload
-        raise ProviderError("OpenAI response did not include structured text output")
+        raise ProviderError(
+            "OpenAI response did not include structured text output",
+            error_type="schema_validation_failed",
+        )
 
     async def generate_structured(
         self,
@@ -146,7 +160,11 @@ class OpenAIProvider(BaseProvider):
         try:
             parsed = json.loads(output_text)
         except json.JSONDecodeError as exc:
-            raise ProviderError(f"Model returned invalid JSON: {exc}") from exc
+            raise ProviderError(
+                f"Model returned invalid JSON: {exc}",
+                error_type="schema_validation_failed",
+                error_context={"json_error": str(exc)},
+            ) from exc
 
         usage = response_payload.get("usage", {})
         prompt_tokens = usage.get("input_tokens")

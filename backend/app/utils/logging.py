@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="")
+trace_id_ctx: ContextVar[str] = ContextVar("trace_id", default="")
 
 
 class JsonFormatter(logging.Formatter):
@@ -16,6 +17,7 @@ class JsonFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
             "request_id": getattr(record, "request_id", get_request_id()),
+            "trace_id": getattr(record, "trace_id", get_trace_id()),
         }
         for key, value in record.__dict__.items():
             if key.startswith("_") or key in {
@@ -63,12 +65,26 @@ def set_request_id(request_id: str | None = None) -> str:
     return rid
 
 
+def set_trace_id(trace_id: str | None = None) -> str:
+    tid = trace_id or str(uuid4())
+    trace_id_ctx.set(tid)
+    return tid
+
+
 def get_request_id() -> str:
     return request_id_ctx.get() or ""
 
 
+def get_trace_id() -> str:
+    return trace_id_ctx.get() or ""
+
+
 def clear_request_id() -> None:
     request_id_ctx.set("")
+
+
+def clear_trace_id() -> None:
+    trace_id_ctx.set("")
 
 
 def now_ms() -> int:

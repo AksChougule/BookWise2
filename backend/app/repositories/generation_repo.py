@@ -1,5 +1,7 @@
 from datetime import UTC, datetime, timedelta
+import json
 import logging
+from uuid import uuid4
 
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -23,6 +25,7 @@ class GenerationRepository:
                 "event": "generation_db_read",
                 "work_id": work_id,
                 "section": section.value,
+                "job_id": generation.job_id if generation else None,
                 "status": generation.status.value if generation else None,
             },
         )
@@ -39,6 +42,7 @@ class GenerationRepository:
                 "idempotency_key": idempotency_key,
                 "work_id": generation.work_id if generation else None,
                 "section": generation.section.value if generation else None,
+                "job_id": generation.job_id if generation else None,
                 "status": generation.status.value if generation else None,
             },
         )
@@ -61,6 +65,7 @@ class GenerationRepository:
                     "action": "insert_pending",
                     "work_id": work_id,
                     "section": section.value,
+                    "job_id": generation.job_id,
                     "status": generation.status.value,
                 },
             )
@@ -71,6 +76,26 @@ class GenerationRepository:
             if current is None:
                 raise
             return current
+
+    def ensure_job_id(self, *, work_id: str, section: GenerationSection) -> str:
+        generation = self.get_or_create(work_id, section)
+        if generation.job_id:
+            return generation.job_id
+        generation.job_id = str(uuid4())
+        generation.updated_at = datetime.now(UTC)
+        self.db.commit()
+        self.db.refresh(generation)
+        logger.info(
+            "generation_db_commit",
+            extra={
+                "event": "generation_db_commit",
+                "action": "ensure_job_id",
+                "work_id": work_id,
+                "section": section.value,
+                "job_id": generation.job_id,
+            },
+        )
+        return generation.job_id
 
     def claim_job(self, *, work_id: str, section: GenerationSection, locked_by: str, lease_seconds: int) -> bool:
         now = datetime.now(UTC)
@@ -93,6 +118,8 @@ class GenerationRepository:
             .values(
                 status=GenerationStatus.GENERATING,
                 error_message=None,
+                error_type=None,
+                error_context=None,
                 locked_by=locked_by,
                 locked_at=now,
                 lease_expires_at=lease_expires_at,
@@ -103,6 +130,7 @@ class GenerationRepository:
         )
         result = self.db.execute(stmt)
         self.db.commit()
+        claimed_row = self.get(work_id, section)
         logger.info(
             "generation_db_commit",
             extra={
@@ -110,6 +138,7 @@ class GenerationRepository:
                 "action": "claim_job",
                 "work_id": work_id,
                 "section": section.value,
+                "job_id": claimed_row.job_id if claimed_row else None,
                 "locked_by": locked_by,
                 "lease_seconds": lease_seconds,
                 "claimed": result.rowcount > 0,
@@ -142,6 +171,7 @@ class GenerationRepository:
         )
         self.db.execute(stmt)
         self.db.commit()
+        updated = self.get(work_id, section)
         logger.info(
             "generation_db_commit",
             extra={
@@ -149,6 +179,7 @@ class GenerationRepository:
                 "action": "set_idempotency_fields",
                 "work_id": work_id,
                 "section": section.value,
+                "job_id": updated.job_id if updated else None,
                 "idempotency_key": idempotency_key,
             },
         )
@@ -164,6 +195,7 @@ class GenerationRepository:
         prompt_hash: str | None,
         idempotency_key: str | None,
         input_fingerprint: str | None,
+        job_id: str | None,
         model: str,
         tokens_prompt: int | None,
         tokens_completion: int | None,
@@ -176,9 +208,12 @@ class GenerationRepository:
         generation.prompt_name = prompt_name
         generation.prompt_version = prompt_version
         generation.prompt_hash = prompt_hash
+        generation.job_id = job_id or generation.job_id or str(uuid4())
         generation.idempotency_key = idempotency_key
         generation.input_fingerprint = input_fingerprint
         generation.model = model
+        generation.error_type = None
+        generation.error_context = None
         generation.tokens_prompt = tokens_prompt
         generation.tokens_completion = tokens_completion
         generation.generation_time_ms = generation_time_ms
@@ -195,6 +230,7 @@ class GenerationRepository:
                 "action": "mark_completed",
                 "work_id": work_id,
                 "section": section.value,
+                "job_id": generation.job_id,
                 "status": generation.status.value,
             },
         )
@@ -211,15 +247,21 @@ class GenerationRepository:
         prompt_hash: str | None,
         idempotency_key: str | None,
         input_fingerprint: str | None,
+        job_id: str | None,
         model: str | None,
         generation_time_ms: int | None,
+        error_type: str | None,
+        error_context: dict | None,
     ) -> Generation:
         generation = self.get_or_create(work_id, section)
         generation.status = GenerationStatus.FAILED
         generation.error_message = error_message
+        generation.error_type = error_type
+        generation.error_context = json.dumps(error_context) if error_context is not None else None
         generation.prompt_name = prompt_name
         generation.prompt_version = prompt_version
         generation.prompt_hash = prompt_hash
+        generation.job_id = job_id or generation.job_id or str(uuid4())
         generation.idempotency_key = idempotency_key
         generation.input_fingerprint = input_fingerprint
         generation.model = model
@@ -237,6 +279,8 @@ class GenerationRepository:
                 "action": "mark_failed",
                 "work_id": work_id,
                 "section": section.value,
+                "job_id": generation.job_id,
+                "error_type": generation.error_type,
                 "status": generation.status.value,
             },
         )

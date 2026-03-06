@@ -5,7 +5,16 @@ from dataclasses import dataclass
 
 
 class ProviderError(Exception):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_type: str = "unknown",
+        error_context: dict | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_type = error_type
+        self.error_context = error_context or {}
 
 
 @dataclass(slots=True)

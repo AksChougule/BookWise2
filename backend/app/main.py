@@ -6,7 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import api_router
 from app.config import get_settings
-from app.utils.logging import clear_request_id, configure_logging, get_request_id, set_request_id
+from app.utils.logging import (
+    clear_request_id,
+    clear_trace_id,
+    configure_logging,
+    get_request_id,
+    get_trace_id,
+    set_request_id,
+    set_trace_id,
+)
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -25,12 +33,14 @@ app.add_middleware(
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
     request_id = set_request_id(request.headers.get("x-request-id"))
+    trace_id = set_trace_id(request.headers.get("x-trace-id"))
     start = perf_counter()
     logger.info(
         "request_started",
         extra={
             "event": "request_started",
             "request_id": request_id,
+            "trace_id": trace_id,
             "route": request.url.path,
             "method": request.method,
             "path": request.url.path,
@@ -46,6 +56,7 @@ async def request_id_middleware(request: Request, call_next):
             extra={
                 "event": "request_failed",
                 "request_id": request_id,
+                "trace_id": trace_id,
                 "route": request.url.path,
                 "method": request.method,
                 "path": request.url.path,
@@ -54,15 +65,18 @@ async def request_id_middleware(request: Request, call_next):
             },
         )
         clear_request_id()
+        clear_trace_id()
         raise
 
     duration_ms = int((perf_counter() - start) * 1000)
     response.headers["x-request-id"] = request_id
+    response.headers["x-trace-id"] = trace_id
     logger.info(
         "request_completed",
         extra={
             "event": "request_completed",
             "request_id": request_id,
+            "trace_id": trace_id,
             "route": request.url.path,
             "method": request.method,
             "path": request.url.path,
@@ -71,12 +85,13 @@ async def request_id_middleware(request: Request, call_next):
         },
     )
     clear_request_id()
+    clear_trace_id()
     return response
 
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"status": "ok", "request_id": get_request_id()}
+    return {"status": "ok", "request_id": get_request_id(), "trace_id": get_trace_id()}
 
 
 app.include_router(api_router, prefix=settings.api_prefix)

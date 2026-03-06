@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
+from pathlib import Path
 
+import httpx
+from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models.book import Book
 from app.models.generation import Generation, GenerationSection, GenerationStatus
+from app.providers.base_provider import ProviderError
 from app.providers.openai_provider import OpenAIProvider
 from app.repositories.book_repo import BookRepository
 from app.repositories.generation_repo import GenerationRepository
@@ -21,6 +25,15 @@ from app.utils.idempotency import compute_idempotency_key, compute_input_fingerp
 from app.utils.logging import now_ms
 
 logger = logging.getLogger(__name__)
+
+ERROR_TYPES = {
+    "provider_timeout",
+    "provider_rate_limited",
+    "schema_validation_failed",
+    "prompt_compile_error",
+    "db_error",
+    "unknown",
+}
 
 
 @dataclass(slots=True)
@@ -85,6 +98,30 @@ class GenerationService:
         except json.JSONDecodeError:
             return {}
 
+    @staticmethod
+    def _error_payload(exc: Exception) -> tuple[str, dict]:
+        if isinstance(exc, PromptCompileError):
+            return "prompt_compile_error", {"exception": str(exc)}
+
+        if isinstance(exc, ValidationError):
+            return "schema_validation_failed", {"validation_errors": exc.errors()}
+
+        if isinstance(exc, ProviderError):
+            error_type = exc.error_type if exc.error_type in ERROR_TYPES else "unknown"
+            if error_type == "unknown" and "429" in str(exc):
+                error_type = "provider_rate_limited"
+            context = dict(exc.error_context)
+            context.setdefault("exception", str(exc))
+            return error_type, context
+
+        if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError)):
+            return "provider_timeout", {"exception": str(exc)}
+
+        if isinstance(exc, SQLAlchemyError):
+            return "db_error", {"exception": str(exc)}
+
+        return "unknown", {"exception": str(exc)}
+
     def _prepare_prompt(
         self,
         *,
@@ -125,8 +162,43 @@ class GenerationService:
                 "route": route,
                 "work_id": work_id,
                 "section": section.value,
+                "job_id": generation.job_id if generation else None,
                 "status": generation.status.value if generation else None,
                 "updated_at": generation.updated_at.isoformat() if generation else None,
+            },
+        )
+
+    @staticmethod
+    def _log_metric_event(
+        *,
+        event: str,
+        route: str,
+        work_id: str,
+        section: str,
+        job_id: str | None,
+        model: str | None,
+        latency_ms: int | None,
+        tokens_prompt: int | None,
+        tokens_completion: int | None,
+        status: str | None = None,
+        error_type: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        logger.info(
+            event,
+            extra={
+                "event": event,
+                "route": route,
+                "work_id": work_id,
+                "section": section,
+                "job_id": job_id,
+                "status": status,
+                "model": model,
+                "latency_ms": latency_ms,
+                "tokens_prompt": tokens_prompt,
+                "tokens_completion": tokens_completion,
+                "error_type": error_type,
+                "error_message": error_message,
             },
         )
 
@@ -188,6 +260,7 @@ class GenerationService:
             return self.to_key_ideas_out(existing_for_key)
 
         record = self.generation_repo.get_or_create(work_id, GenerationSection.KEY_IDEAS)
+        job_id = self.generation_repo.ensure_job_id(work_id=work_id, section=GenerationSection.KEY_IDEAS)
         self.generation_repo.set_idempotency_fields(
             work_id=work_id,
             section=GenerationSection.KEY_IDEAS,
@@ -208,17 +281,19 @@ class GenerationService:
             locked_by=self.worker_id,
             lease_seconds=self.lease_seconds,
         ):
-            logger.info(
-                "generation_started",
-                extra={
-                    "event": "generation_started",
-                    "route": f"/api/books/{work_id}/key-ideas",
-                    "work_id": work_id,
-                    "section": "key_ideas",
-                    "status": "generating",
-                },
+            self._log_metric_event(
+                event="generation_started",
+                route=f"/api/books/{work_id}/key-ideas",
+                work_id=work_id,
+                section=GenerationSection.KEY_IDEAS.value,
+                job_id=job_id,
+                model=self.provider.model,
+                latency_ms=0,
+                tokens_prompt=None,
+                tokens_completion=None,
+                status="generating",
             )
-            await self._run_key_ideas(work_id, prepared=prepared)
+            await self._run_key_ideas(work_id, job_id=job_id, prepared=prepared)
             self.db.expire_all()
 
         fresh = self.generation_repo.get(work_id, GenerationSection.KEY_IDEAS)
@@ -252,6 +327,7 @@ class GenerationService:
             return self.to_critique_out(existing_for_key)
 
         record = self.generation_repo.get_or_create(work_id, GenerationSection.CRITIQUE)
+        job_id = self.generation_repo.ensure_job_id(work_id=work_id, section=GenerationSection.CRITIQUE)
         self.generation_repo.set_idempotency_fields(
             work_id=work_id,
             section=GenerationSection.CRITIQUE,
@@ -272,17 +348,19 @@ class GenerationService:
             locked_by=self.worker_id,
             lease_seconds=self.lease_seconds,
         ):
-            logger.info(
-                "generation_started",
-                extra={
-                    "event": "generation_started",
-                    "route": f"/api/books/{work_id}/critique",
-                    "work_id": work_id,
-                    "section": "critique",
-                    "status": "generating",
-                },
+            self._log_metric_event(
+                event="generation_started",
+                route=f"/api/books/{work_id}/critique",
+                work_id=work_id,
+                section=GenerationSection.CRITIQUE.value,
+                job_id=job_id,
+                model=self.provider.model,
+                latency_ms=0,
+                tokens_prompt=None,
+                tokens_completion=None,
+                status="generating",
             )
-            await self._run_critique(work_id, prepared=prepared)
+            await self._run_critique(work_id, job_id=job_id, prepared=prepared)
             self.db.expire_all()
 
         fresh = self.generation_repo.get(work_id, GenerationSection.CRITIQUE)
@@ -291,15 +369,16 @@ class GenerationService:
             fresh = self.generation_repo.get_or_create(work_id, GenerationSection.CRITIQUE)
         return self.to_critique_out(fresh)
 
-    async def _run_key_ideas(self, work_id: str, prepared: PreparedPrompt | None = None) -> None:
+    async def _run_key_ideas(self, work_id: str, *, job_id: str, prepared: PreparedPrompt | None = None) -> None:
         start_ms = now_ms()
+        route = f"/api/books/{work_id}/key-ideas"
         with SessionLocal() as db:
             book_repo = BookRepository(db)
             generation_repo = GenerationRepository(db)
             book = book_repo.get_by_work_id(work_id)
 
             if not book:
-                generation_repo.mark_failed(
+                failed = generation_repo.mark_failed(
                     work_id=work_id,
                     section=GenerationSection.KEY_IDEAS,
                     error_message="Book metadata not found. Open /api/books/{work_id} first.",
@@ -308,8 +387,25 @@ class GenerationService:
                     prompt_hash=None,
                     idempotency_key=None,
                     input_fingerprint=None,
+                    job_id=job_id,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
+                    error_type="unknown",
+                    error_context={"reason": "book_missing"},
+                )
+                self._log_metric_event(
+                    event="generation_failed",
+                    route=route,
+                    work_id=work_id,
+                    section=GenerationSection.KEY_IDEAS.value,
+                    job_id=job_id,
+                    model=self.provider.model,
+                    latency_ms=failed.generation_time_ms,
+                    tokens_prompt=None,
+                    tokens_completion=None,
+                    status=failed.status.value,
+                    error_type="unknown",
+                    error_message=failed.error_message,
                 )
                 return
 
@@ -347,26 +443,26 @@ class GenerationService:
                     prompt_hash=prompt_hash,
                     idempotency_key=idempotency_key,
                     input_fingerprint=input_fingerprint,
+                    job_id=job_id,
                     model=result.model,
                     tokens_prompt=result.tokens_prompt,
                     tokens_completion=result.tokens_completion,
                     generation_time_ms=now_ms() - start_ms,
                 )
-                logger.info(
-                    "generation_completed",
-                    extra={
-                        "event": "generation_completed",
-                        "route": f"/api/books/{work_id}/key-ideas",
-                        "work_id": work_id,
-                        "section": "key_ideas",
-                        "status": completed.status.value,
-                        "model": completed.model,
-                        "duration_ms": completed.generation_time_ms,
-                        "tokens_prompt": completed.tokens_prompt,
-                        "tokens_completion": completed.tokens_completion,
-                    },
+                self._log_metric_event(
+                    event="generation_completed",
+                    route=route,
+                    work_id=work_id,
+                    section=GenerationSection.KEY_IDEAS.value,
+                    job_id=completed.job_id,
+                    model=completed.model,
+                    latency_ms=completed.generation_time_ms,
+                    tokens_prompt=completed.tokens_prompt,
+                    tokens_completion=completed.tokens_completion,
+                    status=completed.status.value,
                 )
             except Exception as exc:  # noqa: BLE001
+                error_type, error_context = self._error_payload(exc)
                 message = (
                     f"{PromptCompileError.error_type}: {exc}" if isinstance(exc, PromptCompileError) else str(exc)
                 )
@@ -379,32 +475,52 @@ class GenerationService:
                     prompt_hash=prompt_hash,
                     idempotency_key=idempotency_key,
                     input_fingerprint=input_fingerprint,
+                    job_id=job_id,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
+                    error_type=error_type,
+                    error_context=error_context,
+                )
+                self._log_metric_event(
+                    event="generation_failed",
+                    route=route,
+                    work_id=work_id,
+                    section=GenerationSection.KEY_IDEAS.value,
+                    job_id=failed.job_id,
+                    model=failed.model,
+                    latency_ms=failed.generation_time_ms,
+                    tokens_prompt=None,
+                    tokens_completion=None,
+                    status=failed.status.value,
+                    error_type=error_type,
+                    error_message=failed.error_message,
                 )
                 logger.exception(
                     "generation_failed",
                     extra={
                         "event": "generation_failed",
-                        "route": f"/api/books/{work_id}/key-ideas",
+                        "route": route,
                         "work_id": work_id,
-                        "section": "key_ideas",
+                        "section": GenerationSection.KEY_IDEAS.value,
+                        "job_id": failed.job_id,
                         "status": failed.status.value,
                         "model": failed.model,
-                        "duration_ms": failed.generation_time_ms,
+                        "latency_ms": failed.generation_time_ms,
+                        "error_type": error_type,
                         "error_message": failed.error_message,
                     },
                 )
 
-    async def _run_critique(self, work_id: str, prepared: PreparedPrompt | None = None) -> None:
+    async def _run_critique(self, work_id: str, *, job_id: str, prepared: PreparedPrompt | None = None) -> None:
         start_ms = now_ms()
+        route = f"/api/books/{work_id}/critique"
         with SessionLocal() as db:
             book_repo = BookRepository(db)
             generation_repo = GenerationRepository(db)
 
             key_ideas = generation_repo.get(work_id, GenerationSection.KEY_IDEAS)
             if not key_ideas or key_ideas.status != GenerationStatus.COMPLETED:
-                generation_repo.mark_failed(
+                failed = generation_repo.mark_failed(
                     work_id=work_id,
                     section=GenerationSection.CRITIQUE,
                     error_message="Cannot generate critique before key ideas are completed.",
@@ -413,14 +529,31 @@ class GenerationService:
                     prompt_hash=None,
                     idempotency_key=None,
                     input_fingerprint=None,
+                    job_id=job_id,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
+                    error_type="unknown",
+                    error_context={"reason": "key_ideas_not_completed"},
+                )
+                self._log_metric_event(
+                    event="generation_failed",
+                    route=route,
+                    work_id=work_id,
+                    section=GenerationSection.CRITIQUE.value,
+                    job_id=job_id,
+                    model=self.provider.model,
+                    latency_ms=failed.generation_time_ms,
+                    tokens_prompt=None,
+                    tokens_completion=None,
+                    status=failed.status.value,
+                    error_type="unknown",
+                    error_message=failed.error_message,
                 )
                 return
 
             book = book_repo.get_by_work_id(work_id)
             if not book:
-                generation_repo.mark_failed(
+                failed = generation_repo.mark_failed(
                     work_id=work_id,
                     section=GenerationSection.CRITIQUE,
                     error_message="Book metadata not found.",
@@ -429,8 +562,25 @@ class GenerationService:
                     prompt_hash=None,
                     idempotency_key=None,
                     input_fingerprint=None,
+                    job_id=job_id,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
+                    error_type="unknown",
+                    error_context={"reason": "book_missing"},
+                )
+                self._log_metric_event(
+                    event="generation_failed",
+                    route=route,
+                    work_id=work_id,
+                    section=GenerationSection.CRITIQUE.value,
+                    job_id=job_id,
+                    model=self.provider.model,
+                    latency_ms=failed.generation_time_ms,
+                    tokens_prompt=None,
+                    tokens_completion=None,
+                    status=failed.status.value,
+                    error_type="unknown",
+                    error_message=failed.error_message,
                 )
                 return
 
@@ -468,26 +618,26 @@ class GenerationService:
                     prompt_hash=prompt_hash,
                     idempotency_key=idempotency_key,
                     input_fingerprint=input_fingerprint,
+                    job_id=job_id,
                     model=result.model,
                     tokens_prompt=result.tokens_prompt,
                     tokens_completion=result.tokens_completion,
                     generation_time_ms=now_ms() - start_ms,
                 )
-                logger.info(
-                    "generation_completed",
-                    extra={
-                        "event": "generation_completed",
-                        "route": f"/api/books/{work_id}/critique",
-                        "work_id": work_id,
-                        "section": "critique",
-                        "status": completed.status.value,
-                        "model": completed.model,
-                        "duration_ms": completed.generation_time_ms,
-                        "tokens_prompt": completed.tokens_prompt,
-                        "tokens_completion": completed.tokens_completion,
-                    },
+                self._log_metric_event(
+                    event="generation_completed",
+                    route=route,
+                    work_id=work_id,
+                    section=GenerationSection.CRITIQUE.value,
+                    job_id=completed.job_id,
+                    model=completed.model,
+                    latency_ms=completed.generation_time_ms,
+                    tokens_prompt=completed.tokens_prompt,
+                    tokens_completion=completed.tokens_completion,
+                    status=completed.status.value,
                 )
             except Exception as exc:  # noqa: BLE001
+                error_type, error_context = self._error_payload(exc)
                 message = (
                     f"{PromptCompileError.error_type}: {exc}" if isinstance(exc, PromptCompileError) else str(exc)
                 )
@@ -500,19 +650,38 @@ class GenerationService:
                     prompt_hash=prompt_hash,
                     idempotency_key=idempotency_key,
                     input_fingerprint=input_fingerprint,
+                    job_id=job_id,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
+                    error_type=error_type,
+                    error_context=error_context,
+                )
+                self._log_metric_event(
+                    event="generation_failed",
+                    route=route,
+                    work_id=work_id,
+                    section=GenerationSection.CRITIQUE.value,
+                    job_id=failed.job_id,
+                    model=failed.model,
+                    latency_ms=failed.generation_time_ms,
+                    tokens_prompt=None,
+                    tokens_completion=None,
+                    status=failed.status.value,
+                    error_type=error_type,
+                    error_message=failed.error_message,
                 )
                 logger.exception(
                     "generation_failed",
                     extra={
                         "event": "generation_failed",
-                        "route": f"/api/books/{work_id}/critique",
+                        "route": route,
                         "work_id": work_id,
-                        "section": "critique",
+                        "section": GenerationSection.CRITIQUE.value,
+                        "job_id": failed.job_id,
                         "status": failed.status.value,
                         "model": failed.model,
-                        "duration_ms": failed.generation_time_ms,
+                        "latency_ms": failed.generation_time_ms,
+                        "error_type": error_type,
                         "error_message": failed.error_message,
                     },
                 )

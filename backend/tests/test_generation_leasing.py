@@ -89,6 +89,7 @@ def test_mark_completed_and_failed_clear_lease_fields() -> None:
             prompt_hash="h",
             idempotency_key="i",
             input_fingerprint="f",
+            job_id="job-1",
             model="gpt-5.2",
             tokens_prompt=10,
             tokens_completion=20,
@@ -115,8 +116,11 @@ def test_mark_completed_and_failed_clear_lease_fields() -> None:
             prompt_hash="h",
             idempotency_key="i",
             input_fingerprint="f",
+            job_id="job-2",
             model="gpt-5.2",
             generation_time_ms=100,
+            error_type="unknown",
+            error_context={"reason": "test"},
         )
         assert failed.status == GenerationStatus.FAILED
         assert failed.locked_by is None
