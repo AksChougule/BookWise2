@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     openlibrary_base_url: str = "https://openlibrary.org"
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.2"
+    generation_lease_seconds: int = 100
 
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://127.0.0.1:5173"]

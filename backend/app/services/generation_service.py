@@ -4,9 +4,11 @@ import json
 import logging
 from pathlib import Path
 from dataclasses import dataclass
+import os
 
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models.book import Book
 from app.models.generation import Generation, GenerationSection, GenerationStatus
 from app.providers.openai_provider import OpenAIProvider
@@ -33,12 +35,15 @@ class PreparedPrompt:
 
 class GenerationService:
     def __init__(self, db: Session):
+        settings = get_settings()
         self.db = db
         self.book_repo = BookRepository(db)
         self.generation_repo = GenerationRepository(db)
         self.provider = OpenAIProvider()
         self.prompt_dir = Path(__file__).resolve().parents[1] / "prompts"
         self.prompt_store = PromptStore(self.prompt_dir)
+        self.lease_seconds = settings.generation_lease_seconds
+        self.worker_id = f"pid-{os.getpid()}"
 
     @staticmethod
     def _build_context(book: Book) -> tuple[str, str]:
@@ -197,14 +202,12 @@ class GenerationService:
         if record.status == GenerationStatus.COMPLETED:
             return self.to_key_ideas_out(record)
 
-        self.generation_repo.reset_stale_generating(work_id=work_id, section=GenerationSection.KEY_IDEAS)
-        record = self.generation_repo.get_or_create(work_id, GenerationSection.KEY_IDEAS)
-        self._log_snapshot(work_id=work_id, section=GenerationSection.KEY_IDEAS, generation=record)
-
-        if record.status == GenerationStatus.GENERATING:
-            return self.to_key_ideas_out(record)
-
-        if self.generation_repo.claim_for_generation(work_id, GenerationSection.KEY_IDEAS):
+        if self.generation_repo.claim_job(
+            work_id=work_id,
+            section=GenerationSection.KEY_IDEAS,
+            locked_by=self.worker_id,
+            lease_seconds=self.lease_seconds,
+        ):
             logger.info(
                 "generation_started",
                 extra={
@@ -218,8 +221,10 @@ class GenerationService:
             await self._run_key_ideas(work_id, prepared=prepared)
             self.db.expire_all()
 
-        fresh = self.generation_repo.get_or_create(work_id, GenerationSection.KEY_IDEAS)
+        fresh = self.generation_repo.get(work_id, GenerationSection.KEY_IDEAS)
         self._log_snapshot(work_id=work_id, section=GenerationSection.KEY_IDEAS, generation=fresh)
+        if fresh is None:
+            fresh = self.generation_repo.get_or_create(work_id, GenerationSection.KEY_IDEAS)
         return self.to_key_ideas_out(fresh)
 
     async def get_or_create_critique_status(self, work_id: str) -> CritiqueOut:
@@ -246,7 +251,6 @@ class GenerationService:
             self._log_snapshot(work_id=work_id, section=GenerationSection.CRITIQUE, generation=existing_for_key)
             return self.to_critique_out(existing_for_key)
 
-        self.generation_repo.reset_stale_generating(work_id=work_id, section=GenerationSection.CRITIQUE)
         record = self.generation_repo.get_or_create(work_id, GenerationSection.CRITIQUE)
         self.generation_repo.set_idempotency_fields(
             work_id=work_id,
@@ -262,8 +266,11 @@ class GenerationService:
         if record.status == GenerationStatus.COMPLETED:
             return self.to_critique_out(record)
 
-        if record.status != GenerationStatus.GENERATING and self.generation_repo.claim_for_generation(
-            work_id, GenerationSection.CRITIQUE
+        if self.generation_repo.claim_job(
+            work_id=work_id,
+            section=GenerationSection.CRITIQUE,
+            locked_by=self.worker_id,
+            lease_seconds=self.lease_seconds,
         ):
             logger.info(
                 "generation_started",
@@ -278,8 +285,10 @@ class GenerationService:
             await self._run_critique(work_id, prepared=prepared)
             self.db.expire_all()
 
-        fresh = self.generation_repo.get_or_create(work_id, GenerationSection.CRITIQUE)
+        fresh = self.generation_repo.get(work_id, GenerationSection.CRITIQUE)
         self._log_snapshot(work_id=work_id, section=GenerationSection.CRITIQUE, generation=fresh)
+        if fresh is None:
+            fresh = self.generation_repo.get_or_create(work_id, GenerationSection.CRITIQUE)
         return self.to_critique_out(fresh)
 
     async def _run_key_ideas(self, work_id: str, prepared: PreparedPrompt | None = None) -> None:

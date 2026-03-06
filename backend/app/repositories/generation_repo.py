@@ -1,7 +1,7 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import logging
 
-from sqlalchemy import and_, select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -72,21 +72,34 @@ class GenerationRepository:
                 raise
             return current
 
-    def claim_for_generation(self, work_id: str, section: GenerationSection) -> bool:
+    def claim_job(self, *, work_id: str, section: GenerationSection, locked_by: str, lease_seconds: int) -> bool:
+        now = datetime.now(UTC)
+        lease_expires_at = now + timedelta(seconds=lease_seconds)
         stmt = (
             update(Generation)
             .where(
                 and_(
                     Generation.work_id == work_id,
                     Generation.section == section,
-                    Generation.status.in_([GenerationStatus.PENDING, GenerationStatus.FAILED]),
+                    or_(
+                        Generation.status.in_([GenerationStatus.PENDING, GenerationStatus.FAILED]),
+                        and_(
+                            Generation.status == GenerationStatus.GENERATING,
+                            or_(Generation.lease_expires_at.is_(None), Generation.lease_expires_at <= now),
+                        ),
+                    ),
                 )
             )
             .values(
                 status=GenerationStatus.GENERATING,
                 error_message=None,
-                updated_at=datetime.now(UTC),
+                locked_by=locked_by,
+                locked_at=now,
+                lease_expires_at=lease_expires_at,
+                finished_at=None,
+                updated_at=now,
             )
+            .execution_options(synchronize_session=False)
         )
         result = self.db.execute(stmt)
         self.db.commit()
@@ -94,9 +107,11 @@ class GenerationRepository:
             "generation_db_commit",
             extra={
                 "event": "generation_db_commit",
-                "action": "claim_for_generation",
+                "action": "claim_job",
                 "work_id": work_id,
                 "section": section.value,
+                "locked_by": locked_by,
+                "lease_seconds": lease_seconds,
                 "claimed": result.rowcount > 0,
             },
         )
@@ -138,47 +153,6 @@ class GenerationRepository:
             },
         )
 
-    def reset_stale_generating(
-        self,
-        *,
-        work_id: str,
-        section: GenerationSection,
-        stale_after_seconds: int = 180,
-        reason: str = "Generation attempt became stale and was reset.",
-    ) -> bool:
-        cutoff = datetime.now(UTC).timestamp() - stale_after_seconds
-        cutoff_dt = datetime.fromtimestamp(cutoff, tz=UTC).replace(tzinfo=None)
-        stmt = (
-            update(Generation)
-            .where(
-                and_(
-                    Generation.work_id == work_id,
-                    Generation.section == section,
-                    Generation.status == GenerationStatus.GENERATING,
-                    Generation.updated_at < cutoff_dt,
-                )
-            )
-            .values(
-                status=GenerationStatus.FAILED,
-                error_message=reason,
-                updated_at=datetime.now(UTC).replace(tzinfo=None),
-            )
-        )
-        result = self.db.execute(stmt)
-        self.db.commit()
-        if result.rowcount > 0:
-            logger.warning(
-                "generation_db_commit",
-                extra={
-                    "event": "generation_db_commit",
-                    "action": "reset_stale_generating",
-                    "work_id": work_id,
-                    "section": section.value,
-                    "stale_after_seconds": stale_after_seconds,
-                },
-            )
-        return result.rowcount > 0
-
     def mark_completed(
         self,
         *,
@@ -208,6 +182,10 @@ class GenerationRepository:
         generation.tokens_prompt = tokens_prompt
         generation.tokens_completion = tokens_completion
         generation.generation_time_ms = generation_time_ms
+        generation.locked_by = None
+        generation.locked_at = None
+        generation.lease_expires_at = None
+        generation.finished_at = datetime.now(UTC)
         self.db.commit()
         self.db.refresh(generation)
         logger.info(
@@ -246,6 +224,10 @@ class GenerationRepository:
         generation.input_fingerprint = input_fingerprint
         generation.model = model
         generation.generation_time_ms = generation_time_ms
+        generation.locked_by = None
+        generation.locked_at = None
+        generation.lease_expires_at = None
+        generation.finished_at = datetime.now(UTC)
         self.db.commit()
         self.db.refresh(generation)
         logger.info(

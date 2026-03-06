@@ -9,7 +9,8 @@ Context:
 
 Requirements:
 - Return valid JSON only.
-- Total output should generally exceed 800 tokens.
+- Keep output concise and bounded:
+- Total output should generally exceed 800 tokens but should be always less than a 1000 tokens.
 - Return exactly one object with this schema:
   {"strengths": "...", "weaknesses": "...", "who_should_read": "..."}
 - All fields must be strings.
