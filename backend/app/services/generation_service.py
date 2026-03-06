@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
@@ -14,9 +15,20 @@ from app.repositories.generation_repo import GenerationRepository
 from app.schemas.generations import CritiqueOut, CritiquePayload, KeyIdeasOut, KeyIdeasPayload
 from app.services.prompt_store import PromptCompileError, PromptStore
 from app.utils.db import SessionLocal
+from app.utils.idempotency import compute_idempotency_key, compute_input_fingerprint
 from app.utils.logging import now_ms
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class PreparedPrompt:
+    prompt_name: str
+    compiled_prompt: str
+    prompt_version: str
+    prompt_hash: str
+    input_fingerprint: str
+    idempotency_key: str
 
 
 class GenerationService:
@@ -67,6 +79,36 @@ class GenerationService:
             return parsed if isinstance(parsed, dict) else {}
         except json.JSONDecodeError:
             return {}
+
+    def _prepare_prompt(
+        self,
+        *,
+        book: Book,
+        work_id: str,
+        section: GenerationSection,
+        prompt_name: str,
+    ) -> PreparedPrompt:
+        title, author = self._build_context(book)
+        prompt_result = self.prompt_store.render(prompt_name, {"title": title, "author": author})
+        input_fingerprint = compute_input_fingerprint(
+            title=book.title,
+            authors=book.authors,
+            description=book.description,
+        )
+        idempotency_key = compute_idempotency_key(
+            work_id=work_id,
+            section=section.value,
+            prompt_hash=prompt_result.prompt_hash,
+            model=self.provider.model,
+        )
+        return PreparedPrompt(
+            prompt_name=prompt_name,
+            compiled_prompt=prompt_result.compiled_prompt,
+            prompt_version=prompt_result.prompt_version,
+            prompt_hash=prompt_result.prompt_hash,
+            input_fingerprint=input_fingerprint,
+            idempotency_key=idempotency_key,
+        )
 
     @staticmethod
     def _log_snapshot(*, work_id: str, section: GenerationSection, generation: Generation | None) -> None:
@@ -124,7 +166,32 @@ class GenerationService:
         )
 
     async def trigger_key_ideas(self, work_id: str) -> KeyIdeasOut:
+        book = self.book_repo.get_by_work_id(work_id)
+        if not book:
+            record = self.generation_repo.get_or_create(work_id, GenerationSection.KEY_IDEAS)
+            return self.to_key_ideas_out(record)
+
+        prepared = self._prepare_prompt(
+            book=book,
+            work_id=work_id,
+            section=GenerationSection.KEY_IDEAS,
+            prompt_name="key_ideas",
+        )
+        existing_for_key = self.generation_repo.get_by_idempotency_key(prepared.idempotency_key)
+        if existing_for_key:
+            self._log_snapshot(work_id=work_id, section=GenerationSection.KEY_IDEAS, generation=existing_for_key)
+            return self.to_key_ideas_out(existing_for_key)
+
         record = self.generation_repo.get_or_create(work_id, GenerationSection.KEY_IDEAS)
+        self.generation_repo.set_idempotency_fields(
+            work_id=work_id,
+            section=GenerationSection.KEY_IDEAS,
+            prompt_name=prepared.prompt_name,
+            prompt_version=prepared.prompt_version,
+            prompt_hash=prepared.prompt_hash,
+            idempotency_key=prepared.idempotency_key,
+            input_fingerprint=prepared.input_fingerprint,
+        )
         self._log_snapshot(work_id=work_id, section=GenerationSection.KEY_IDEAS, generation=record)
 
         if record.status == GenerationStatus.COMPLETED:
@@ -148,7 +215,7 @@ class GenerationService:
                     "status": "generating",
                 },
             )
-            await self._run_key_ideas(work_id)
+            await self._run_key_ideas(work_id, prepared=prepared)
             self.db.expire_all()
 
         fresh = self.generation_repo.get_or_create(work_id, GenerationSection.KEY_IDEAS)
@@ -164,8 +231,32 @@ class GenerationService:
         if not key_ideas or key_ideas.status != GenerationStatus.COMPLETED:
             return self.to_critique_out(record)
 
+        book = self.book_repo.get_by_work_id(work_id)
+        if not book:
+            return self.to_critique_out(record)
+
+        prepared = self._prepare_prompt(
+            book=book,
+            work_id=work_id,
+            section=GenerationSection.CRITIQUE,
+            prompt_name="critique",
+        )
+        existing_for_key = self.generation_repo.get_by_idempotency_key(prepared.idempotency_key)
+        if existing_for_key:
+            self._log_snapshot(work_id=work_id, section=GenerationSection.CRITIQUE, generation=existing_for_key)
+            return self.to_critique_out(existing_for_key)
+
         self.generation_repo.reset_stale_generating(work_id=work_id, section=GenerationSection.CRITIQUE)
         record = self.generation_repo.get_or_create(work_id, GenerationSection.CRITIQUE)
+        self.generation_repo.set_idempotency_fields(
+            work_id=work_id,
+            section=GenerationSection.CRITIQUE,
+            prompt_name=prepared.prompt_name,
+            prompt_version=prepared.prompt_version,
+            prompt_hash=prepared.prompt_hash,
+            idempotency_key=prepared.idempotency_key,
+            input_fingerprint=prepared.input_fingerprint,
+        )
         self._log_snapshot(work_id=work_id, section=GenerationSection.CRITIQUE, generation=record)
 
         if record.status == GenerationStatus.COMPLETED:
@@ -184,14 +275,14 @@ class GenerationService:
                     "status": "generating",
                 },
             )
-            await self._run_critique(work_id)
+            await self._run_critique(work_id, prepared=prepared)
             self.db.expire_all()
 
         fresh = self.generation_repo.get_or_create(work_id, GenerationSection.CRITIQUE)
         self._log_snapshot(work_id=work_id, section=GenerationSection.CRITIQUE, generation=fresh)
         return self.to_critique_out(fresh)
 
-    async def _run_key_ideas(self, work_id: str) -> None:
+    async def _run_key_ideas(self, work_id: str, prepared: PreparedPrompt | None = None) -> None:
         start_ms = now_ms()
         with SessionLocal() as db:
             book_repo = BookRepository(db)
@@ -206,20 +297,31 @@ class GenerationService:
                     prompt_name=None,
                     prompt_version=None,
                     prompt_hash=None,
+                    idempotency_key=None,
+                    input_fingerprint=None,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
                 )
                 return
 
             prompt_name = "key_ideas"
-            prompt_version: str | None = None
-            prompt_hash: str | None = None
+            prompt_version: str | None = prepared.prompt_version if prepared else None
+            prompt_hash: str | None = prepared.prompt_hash if prepared else None
+            idempotency_key: str | None = prepared.idempotency_key if prepared else None
+            input_fingerprint: str | None = prepared.input_fingerprint if prepared else None
             try:
-                title, author = self._build_context(book)
-                prompt_result = self.prompt_store.render(prompt_name, {"title": title, "author": author})
-                prompt = prompt_result.compiled_prompt
-                prompt_version = prompt_result.prompt_version
-                prompt_hash = prompt_result.prompt_hash
+                if prepared is None:
+                    prepared = self._prepare_prompt(
+                        book=book,
+                        work_id=work_id,
+                        section=GenerationSection.KEY_IDEAS,
+                        prompt_name=prompt_name,
+                    )
+                    prompt_version = prepared.prompt_version
+                    prompt_hash = prepared.prompt_hash
+                    idempotency_key = prepared.idempotency_key
+                    input_fingerprint = prepared.input_fingerprint
+                prompt = prepared.compiled_prompt
                 result = await self.provider.generate_structured(
                     prompt=prompt,
                     schema_name="key_ideas_response",
@@ -234,6 +336,8 @@ class GenerationService:
                     prompt_name=prompt_name,
                     prompt_version=prompt_version,
                     prompt_hash=prompt_hash,
+                    idempotency_key=idempotency_key,
+                    input_fingerprint=input_fingerprint,
                     model=result.model,
                     tokens_prompt=result.tokens_prompt,
                     tokens_completion=result.tokens_completion,
@@ -264,6 +368,8 @@ class GenerationService:
                     prompt_name=prompt_name,
                     prompt_version=prompt_version,
                     prompt_hash=prompt_hash,
+                    idempotency_key=idempotency_key,
+                    input_fingerprint=input_fingerprint,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
                 )
@@ -281,7 +387,7 @@ class GenerationService:
                     },
                 )
 
-    async def _run_critique(self, work_id: str) -> None:
+    async def _run_critique(self, work_id: str, prepared: PreparedPrompt | None = None) -> None:
         start_ms = now_ms()
         with SessionLocal() as db:
             book_repo = BookRepository(db)
@@ -296,6 +402,8 @@ class GenerationService:
                     prompt_name=None,
                     prompt_version=None,
                     prompt_hash=None,
+                    idempotency_key=None,
+                    input_fingerprint=None,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
                 )
@@ -310,20 +418,31 @@ class GenerationService:
                     prompt_name=None,
                     prompt_version=None,
                     prompt_hash=None,
+                    idempotency_key=None,
+                    input_fingerprint=None,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
                 )
                 return
 
             prompt_name = "critique"
-            prompt_version: str | None = None
-            prompt_hash: str | None = None
+            prompt_version: str | None = prepared.prompt_version if prepared else None
+            prompt_hash: str | None = prepared.prompt_hash if prepared else None
+            idempotency_key: str | None = prepared.idempotency_key if prepared else None
+            input_fingerprint: str | None = prepared.input_fingerprint if prepared else None
             try:
-                title, author = self._build_context(book)
-                prompt_result = self.prompt_store.render(prompt_name, {"title": title, "author": author})
-                prompt = prompt_result.compiled_prompt
-                prompt_version = prompt_result.prompt_version
-                prompt_hash = prompt_result.prompt_hash
+                if prepared is None:
+                    prepared = self._prepare_prompt(
+                        book=book,
+                        work_id=work_id,
+                        section=GenerationSection.CRITIQUE,
+                        prompt_name=prompt_name,
+                    )
+                    prompt_version = prepared.prompt_version
+                    prompt_hash = prepared.prompt_hash
+                    idempotency_key = prepared.idempotency_key
+                    input_fingerprint = prepared.input_fingerprint
+                prompt = prepared.compiled_prompt
                 result = await self.provider.generate_structured(
                     prompt=prompt,
                     schema_name="critique_response",
@@ -338,6 +457,8 @@ class GenerationService:
                     prompt_name=prompt_name,
                     prompt_version=prompt_version,
                     prompt_hash=prompt_hash,
+                    idempotency_key=idempotency_key,
+                    input_fingerprint=input_fingerprint,
                     model=result.model,
                     tokens_prompt=result.tokens_prompt,
                     tokens_completion=result.tokens_completion,
@@ -368,6 +489,8 @@ class GenerationService:
                     prompt_name=prompt_name,
                     prompt_version=prompt_version,
                     prompt_hash=prompt_hash,
+                    idempotency_key=idempotency_key,
+                    input_fingerprint=input_fingerprint,
                     model=self.provider.model,
                     generation_time_ms=now_ms() - start_ms,
                 )

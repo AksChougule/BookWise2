@@ -36,6 +36,8 @@ class Generation(Base):
     prompt_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     prompt_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    input_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     tokens_prompt: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tokens_completion: Mapped[int | None] = mapped_column(Integer, nullable=True)

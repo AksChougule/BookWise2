@@ -28,6 +28,22 @@ class GenerationRepository:
         )
         return generation
 
+    def get_by_idempotency_key(self, idempotency_key: str) -> Generation | None:
+        stmt = select(Generation).where(Generation.idempotency_key == idempotency_key)
+        generation = self.db.scalar(stmt)
+        logger.info(
+            "generation_db_read",
+            extra={
+                "event": "generation_db_read",
+                "action": "by_idempotency_key",
+                "idempotency_key": idempotency_key,
+                "work_id": generation.work_id if generation else None,
+                "section": generation.section.value if generation else None,
+                "status": generation.status.value if generation else None,
+            },
+        )
+        return generation
+
     def get_or_create(self, work_id: str, section: GenerationSection) -> Generation:
         existing = self.get(work_id, section)
         if existing:
@@ -86,6 +102,42 @@ class GenerationRepository:
         )
         return result.rowcount > 0
 
+    def set_idempotency_fields(
+        self,
+        *,
+        work_id: str,
+        section: GenerationSection,
+        prompt_name: str,
+        prompt_version: str,
+        prompt_hash: str,
+        idempotency_key: str,
+        input_fingerprint: str,
+    ) -> None:
+        stmt = (
+            update(Generation)
+            .where(and_(Generation.work_id == work_id, Generation.section == section))
+            .values(
+                prompt_name=prompt_name,
+                prompt_version=prompt_version,
+                prompt_hash=prompt_hash,
+                idempotency_key=idempotency_key,
+                input_fingerprint=input_fingerprint,
+                updated_at=datetime.now(UTC),
+            )
+        )
+        self.db.execute(stmt)
+        self.db.commit()
+        logger.info(
+            "generation_db_commit",
+            extra={
+                "event": "generation_db_commit",
+                "action": "set_idempotency_fields",
+                "work_id": work_id,
+                "section": section.value,
+                "idempotency_key": idempotency_key,
+            },
+        )
+
     def reset_stale_generating(
         self,
         *,
@@ -136,6 +188,8 @@ class GenerationRepository:
         prompt_name: str | None,
         prompt_version: str | None,
         prompt_hash: str | None,
+        idempotency_key: str | None,
+        input_fingerprint: str | None,
         model: str,
         tokens_prompt: int | None,
         tokens_completion: int | None,
@@ -148,6 +202,8 @@ class GenerationRepository:
         generation.prompt_name = prompt_name
         generation.prompt_version = prompt_version
         generation.prompt_hash = prompt_hash
+        generation.idempotency_key = idempotency_key
+        generation.input_fingerprint = input_fingerprint
         generation.model = model
         generation.tokens_prompt = tokens_prompt
         generation.tokens_completion = tokens_completion
@@ -175,6 +231,8 @@ class GenerationRepository:
         prompt_name: str | None,
         prompt_version: str | None,
         prompt_hash: str | None,
+        idempotency_key: str | None,
+        input_fingerprint: str | None,
         model: str | None,
         generation_time_ms: int | None,
     ) -> Generation:
@@ -184,6 +242,8 @@ class GenerationRepository:
         generation.prompt_name = prompt_name
         generation.prompt_version = prompt_version
         generation.prompt_hash = prompt_hash
+        generation.idempotency_key = idempotency_key
+        generation.input_fingerprint = input_fingerprint
         generation.model = model
         generation.generation_time_ms = generation_time_ms
         self.db.commit()
