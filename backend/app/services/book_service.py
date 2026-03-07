@@ -18,6 +18,7 @@ class BookService:
 
     _CONTAINS_SECTION_PATTERNS = (
         re.compile(r"(?is)\n\s*-{3,}\s*\*{0,2}contains\*{0,2}\b.*$"),
+        re.compile(r"(?is)\s*-{3,}\s*\*{0,2}contains\*{0,2}\b.*$"),
         re.compile(r"(?is)\s+\*{0,2}contains\*{0,2}\s*-\s*\[.*$"),
     )
 
