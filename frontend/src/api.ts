@@ -61,6 +61,39 @@ export interface SurpriseResponse {
   authors?: string;
 }
 
+export interface AuthorBookItem {
+  work_id: string;
+  title: string;
+  authors: string | null;
+  first_publish_year: number | null;
+  cover_url: string | null;
+}
+
+export interface AuthorBooksGroup {
+  author: string;
+  books: AuthorBookItem[];
+}
+
+export interface AuthorBooksResponse {
+  work_id: string;
+  groups: AuthorBooksGroup[];
+}
+
+export interface YouTubeVideo {
+  video_id: string;
+  title: string;
+  channel: string;
+  views: number;
+  published_at: string | null;
+  thumbnail: string | null;
+}
+
+export interface YouTubeVideosResponse {
+  work_id: string;
+  source: "cache" | "api";
+  videos: YouTubeVideo[];
+}
+
 export interface ApiMeta {
   requestId: string | null;
 }
@@ -151,5 +184,9 @@ export const api = {
     fetchJson<CritiqueResponse>(`/books/${workId}/critique${retry ? "?retry=true" : ""}`),
   getCritiqueWithMeta: (workId: string, retry = false) =>
     fetchJsonWithMeta<CritiqueResponse>(`/books/${workId}/critique${retry ? "?retry=true" : ""}`),
+  getOtherBooks: (workId: string) =>
+    fetchJsonWithMeta<AuthorBooksResponse>(`/books/${workId}/other-books`),
+  getYoutubeVideos: (workId: string) =>
+    fetchJsonWithMeta<YouTubeVideosResponse>(`/books/${workId}/youtube-videos`),
   surprise: () => fetchJson<SurpriseResponse>("/surprise"),
 };

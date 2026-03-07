@@ -4,18 +4,24 @@ import { Link, useParams } from "react-router-dom";
 import {
   api,
   ApiResult,
+  AuthorBooksResponse,
   Book,
   CritiqueResponse,
   formatError,
   GenerationStatus,
   KeyIdeasResponse,
   SummaryResponse,
+  YouTubeVideo,
+  YouTubeVideosResponse,
 } from "../../api";
+import { AuthorBooksSection } from "./AuthorBooksSection";
 import { CritiqueSection } from "./CritiqueSection";
 import { KeyIdeasSection } from "./KeyIdeasSection";
 import { SectionContainer } from "./SectionContainer";
 import { StickyBookRail } from "./StickyBookRail";
 import { SummarySection } from "./SummarySection";
+import { VideoModalPlayer } from "./VideoModalPlayer";
+import { YouTubeVideosSection } from "./YouTubeVideosSection";
 
 type SectionState<T> = {
   data: T | null;
@@ -102,6 +108,47 @@ export function BookDetailsPage() {
     loading: true,
     error: null,
   });
+  const [otherBooks, setOtherBooks] = useState<SectionState<AuthorBooksResponse>>({
+    data: null,
+    loading: true,
+    error: null,
+  });
+  const [youtubeVideos, setYoutubeVideos] = useState<SectionState<YouTubeVideosResponse>>({
+    data: null,
+    loading: true,
+    error: null,
+  });
+  const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
+
+  const prefetchExternalSections = async (cancelled: () => boolean): Promise<void> => {
+    if (cancelled()) {
+      return;
+    }
+
+    setOtherBooks({ data: null, loading: true, error: null });
+    setYoutubeVideos({ data: null, loading: true, error: null });
+
+    const [otherResult, youtubeResult] = await Promise.allSettled([
+      api.getOtherBooks(workId),
+      api.getYoutubeVideos(workId),
+    ]);
+
+    if (cancelled()) {
+      return;
+    }
+
+    if (otherResult.status === "fulfilled") {
+      setOtherBooks({ data: otherResult.value.data, loading: false, error: null });
+    } else {
+      setOtherBooks({ data: null, loading: false, error: formatError(otherResult.reason) });
+    }
+
+    if (youtubeResult.status === "fulfilled") {
+      setYoutubeVideos({ data: youtubeResult.value.data, loading: false, error: null });
+    } else {
+      setYoutubeVideos({ data: null, loading: false, error: formatError(youtubeResult.reason) });
+    }
+  };
 
   const runSections = async (retry: { summary?: boolean; keyIdeas?: boolean; critique?: boolean } = {}) => {
     let disposed = false;
@@ -131,11 +178,19 @@ export function BookDetailsPage() {
       };
     }
 
-    await pollSection(
+    const critiqueState = await pollSection(
       () => api.getCritiqueWithMeta(workId, Boolean(retry.critique)),
       setCritique,
       cancelled
     );
+
+    if (cancelled() || critiqueState.data?.status !== "completed") {
+      return () => {
+        disposed = true;
+      };
+    }
+
+    await prefetchExternalSections(cancelled);
 
     return () => {
       disposed = true;
@@ -150,6 +205,9 @@ export function BookDetailsPage() {
     setSummary({ data: null, loading: true, error: null });
     setKeyIdeas({ data: null, loading: true, error: null });
     setCritique({ data: null, loading: true, error: null });
+    setOtherBooks({ data: null, loading: true, error: null });
+    setYoutubeVideos({ data: null, loading: true, error: null });
+    setSelectedVideo(null);
 
     void (async () => {
       try {
@@ -207,7 +265,7 @@ export function BookDetailsPage() {
       window.removeEventListener("scroll", computeActiveSection);
       window.removeEventListener("resize", computeActiveSection);
     };
-  }, [summary.data, keyIdeas.data, critique.data]);
+  }, [summary.data, keyIdeas.data, critique.data, otherBooks.data, youtubeVideos.data]);
 
   const onNavigate = (id: string) => {
     setActiveSection(id);
@@ -276,11 +334,11 @@ export function BookDetailsPage() {
           </SectionContainer>
 
           <SectionContainer id="other-books" title="Other Books by Same Author">
-            <p className="placeholder-copy">Section scaffolded for Sprint 3.</p>
+            <AuthorBooksSection state={otherBooks} />
           </SectionContainer>
 
           <SectionContainer id="youtube-videos" title="YouTube Videos">
-            <p className="placeholder-copy">Section scaffolded for Sprint 3.</p>
+            <YouTubeVideosSection state={youtubeVideos} onOpenVideo={setSelectedVideo} />
           </SectionContainer>
 
           <SectionContainer id="explore-more" title="Explore More">
@@ -288,6 +346,7 @@ export function BookDetailsPage() {
           </SectionContainer>
         </div>
       </div>
+      <VideoModalPlayer video={selectedVideo} onClose={() => setSelectedVideo(null)} />
     </main>
   );
 }

@@ -22,6 +22,9 @@ class OpenLibraryClient:
     async def search_books(self, query: str, limit: int = 25) -> dict[str, Any]:
         return await self._get_json("/search.json", params={"q": query, "limit": limit})
 
+    async def search_books_by_author(self, author: str, limit: int = 18) -> dict[str, Any]:
+        return await self._get_json("/search.json", params={"author": author, "limit": limit})
+
     async def get_work(self, work_id: str) -> dict[str, Any]:
         return await self._get_json(f"/works/{work_id}.json")
 

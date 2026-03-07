@@ -244,6 +244,150 @@ body {
   color: #64748b;
 }
 
+.author-groups-wrap {
+  display: grid;
+  gap: 1rem;
+}
+
+.author-group h3 {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+}
+
+.author-books-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.book-mini-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem;
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  gap: 0.6rem;
+  align-items: start;
+  background: #fff;
+}
+
+.book-mini-cover {
+  width: 60px;
+  height: 84px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #e2e8f0;
+}
+
+.book-mini-cover-placeholder {
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.book-mini-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+
+.book-mini-meta {
+  margin: 0.2rem 0 0;
+  color: #64748b;
+  font-size: 0.77rem;
+}
+
+.video-grid {
+  margin-top: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.video-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.video-thumbnail {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  background: #e2e8f0;
+}
+
+.video-thumbnail-placeholder {
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.video-body {
+  padding: 0.55rem 0.6rem 0.65rem;
+}
+
+.video-title {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.video-meta {
+  margin: 0.22rem 0 0;
+  color: #64748b;
+  font-size: 0.77rem;
+}
+
+.video-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.72);
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.video-modal {
+  background: #fff;
+  width: min(900px, 100%);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 0.65rem;
+}
+
+.video-modal-close {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.6rem;
+  cursor: pointer;
+}
+
+.video-embed-wrap {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+}
+
+.video-embed-wrap iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 8px;
+}
+
 .mobile-book-header {
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -429,5 +573,13 @@ body {
   .book-meta img,
   .book-meta .placeholder {
     width: min(240px, 55vw);
+  }
+
+  .author-books-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .video-grid {
+    grid-template-columns: 1fr;
   }
 }

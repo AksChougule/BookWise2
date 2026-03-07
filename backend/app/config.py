@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     bookwise_db_url: str = "sqlite:///./bookwise.db"
 
     openlibrary_base_url: str = "https://openlibrary.org"
+    youtube_base_url: str = "https://www.googleapis.com/youtube/v3"
+    youtube_api_key: str | None = None
     llm_provider: Literal["openai", "anthropic"] = "openai"
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.2"
