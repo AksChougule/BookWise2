@@ -44,6 +44,7 @@ def test_api_contracts(tmp_path, monkeypatch) -> None:
                     "key": "/works/OL27448W",
                     "title": "The Lord of the Rings",
                     "author_name": ["J.R.R. Tolkien"],
+                    "first_publish_year": 1954,
                     "cover_i": 123,
                 }
             ]
@@ -85,7 +86,8 @@ def test_api_contracts(tmp_path, monkeypatch) -> None:
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             search_res = await client.get("/api/search", params={"q": "lord"})
             assert search_res.status_code == 200
-            SearchResponse.model_validate(search_res.json())
+            parsed_search = SearchResponse.model_validate(search_res.json())
+            assert parsed_search.results[0].first_publish_year == 1954
 
             book_res = await client.get("/api/books/OL27448W")
             assert book_res.status_code == 200

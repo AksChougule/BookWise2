@@ -7,6 +7,7 @@ class SearchBookOut(BaseModel):
     work_id: str
     title: str
     authors: str | None = None
+    first_publish_year: int | None = None
     cover_url: str | None = None
 
 

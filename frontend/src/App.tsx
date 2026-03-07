@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Route, Routes, useNavigate, useParams } from "react-router-dom";
 
 import {
@@ -11,6 +11,8 @@ import {
   KeyIdeasResponse,
   SearchBook,
 } from "./api";
+import { SearchBar } from "./components/search/SearchBar";
+import { SearchResultsPanel } from "./components/search/SearchResultsPanel";
 
 type SectionState<T> = {
   data: T | null;
@@ -82,26 +84,62 @@ function ErrorBox({ message }: { message: string }) {
 
 function SearchPage() {
   const navigate = useNavigate();
+  const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<SearchBook[]>([]);
+  const [prefetchingId, setPrefetchingId] = useState<string | null>(null);
 
-  const onSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!query.trim()) {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setQuery(queryInput.trim());
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [queryInput]);
+
+  useEffect(() => {
+    let disposed = false;
+    if (!query) {
+      setResults([]);
+      setError(null);
+      setLoading(false);
       return;
     }
+
     setLoading(true);
     setError(null);
+    void (async () => {
+      try {
+        const response = await api.search(query);
+        if (!disposed) {
+          setResults(response.results.slice(0, 25));
+        }
+      } catch (err) {
+        if (!disposed) {
+          setResults([]);
+          setError(formatError(err));
+        }
+      } finally {
+        if (!disposed) {
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, [query]);
+
+  const onOpenResult = async (book: SearchBook) => {
+    setPrefetchingId(book.work_id);
     try {
-      const response = await api.search(query.trim());
-      setResults(response.results);
-    } catch (err) {
-      setResults([]);
-      setError(formatError(err));
+      await api.getBook(book.work_id);
+    } catch {
+      // Navigation should still proceed if prefetch fails.
     } finally {
-      setLoading(false);
+      setPrefetchingId(null);
+      navigate(`/book/${book.work_id}`);
     }
   };
 
@@ -122,35 +160,15 @@ function SearchPage() {
         <p>Search Open Library, then auto-generate Key Ideas and Critique.</p>
       </header>
 
-      <form className="search-form" onSubmit={onSubmit}>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by title, author, or keyword"
-          aria-label="Search books"
-        />
-        <button type="submit" disabled={loading}>
-          {loading ? "Searching..." : "Search"}
-        </button>
-        <button type="button" className="secondary" onClick={onSurprise}>
-          Surprise Me
-        </button>
-      </form>
-
-      {error ? <ErrorBox message={error} /> : null}
-
-      <section className="grid">
-        {results.map((book) => (
-          <article className="card" key={book.work_id}>
-            {book.cover_url ? <img src={book.cover_url} alt={book.title} /> : <div className="placeholder">No Cover</div>}
-            <div>
-              <h3>{book.title}</h3>
-              <p>{book.authors ?? "Unknown author"}</p>
-              <button onClick={() => navigate(`/book/${book.work_id}`)}>Open Book</button>
-            </div>
-          </article>
-        ))}
-      </section>
+      <SearchBar value={queryInput} loading={loading} onChange={setQueryInput} onSurprise={onSurprise} />
+      <SearchResultsPanel
+        query={queryInput}
+        loading={loading}
+        error={error}
+        results={results}
+        prefetchingId={prefetchingId}
+        onOpen={onOpenResult}
+      />
     </main>
   );
 }

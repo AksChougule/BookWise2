@@ -6,6 +6,7 @@ export interface SearchBook {
   work_id: string;
   title: string;
   authors: string | null;
+  first_publish_year: number | null;
   cover_url: string | null;
 }
 
