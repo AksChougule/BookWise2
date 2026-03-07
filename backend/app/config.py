@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -13,8 +14,11 @@ class Settings(BaseSettings):
     bookwise_db_url: str = "sqlite:///./bookwise.db"
 
     openlibrary_base_url: str = "https://openlibrary.org"
+    llm_provider: Literal["openai", "anthropic"] = "openai"
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.2"
+    anthropic_api_key: str | None = None
+    anthropic_model: str = "claude-sonnet-4-5"
     generation_lease_seconds: int = 100
 
     cors_origins: list[str] = Field(
