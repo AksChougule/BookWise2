@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 from sqlalchemy.orm import Session
 
@@ -15,14 +16,31 @@ class BookService:
         self.client = client
         self.book_repo = BookRepository(db)
 
+    _CONTAINS_SECTION_PATTERNS = (
+        re.compile(r"(?is)\n\s*-{3,}\s*\*{0,2}contains\*{0,2}\b.*$"),
+        re.compile(r"(?is)\s+\*{0,2}contains\*{0,2}\s*-\s*\[.*$"),
+    )
+
+    @classmethod
+    def _strip_contains_section(cls, description: str | None) -> str | None:
+        if not description:
+            return None
+
+        cleaned = description
+        for pattern in cls._CONTAINS_SECTION_PATTERNS:
+            cleaned = pattern.sub("", cleaned)
+
+        cleaned = cleaned.strip()
+        return cleaned or None
+
     @staticmethod
     def _description_text(raw_description: str | dict | None) -> str | None:
         if isinstance(raw_description, str):
-            return raw_description
+            return BookService._strip_contains_section(raw_description)
         if isinstance(raw_description, dict):
             value = raw_description.get("value")
             if isinstance(value, str):
-                return value
+                return BookService._strip_contains_section(value)
         return None
 
     @staticmethod
