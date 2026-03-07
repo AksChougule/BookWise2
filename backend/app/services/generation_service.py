@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.models.book import Book
 from app.models.generation import Generation, GenerationSection, GenerationStatus
-from app.providers.base_provider import ProviderError
-from app.providers.openai_provider import OpenAIProvider
+from app.providers import get_provider
+from app.providers.base_provider import BaseProvider, ProviderError
 from app.repositories.book_repo import BookRepository
 from app.repositories.generation_repo import GenerationRepository
 from app.schemas.generations import CritiqueOut, CritiquePayload, KeyIdeasOut, KeyIdeasPayload
@@ -47,12 +47,12 @@ class PreparedPrompt:
 
 
 class GenerationService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, provider: BaseProvider | None = None):
         settings = get_settings()
         self.db = db
         self.book_repo = BookRepository(db)
         self.generation_repo = GenerationRepository(db)
-        self.provider = OpenAIProvider()
+        self.provider = provider or get_provider()
         self.prompt_dir = Path(__file__).resolve().parents[1] / "prompts"
         self.prompt_store = PromptStore(self.prompt_dir)
         self.lease_seconds = settings.generation_lease_seconds
