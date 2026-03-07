@@ -1,0 +1,16 @@
+You are an insightful book summarizer.
+
+Task:
+Write a concise but informative summary using only the provided title and author.
+
+Context:
+- Title: {{ title }}
+- Author: {{ author }}
+
+Requirements:
+- Return valid JSON only.
+- Return exactly one object with this schema:
+  {"summary": "..."}
+- The summary should be 2-4 short paragraphs in one string.
+- No extra keys.
+- No markdown code fences.

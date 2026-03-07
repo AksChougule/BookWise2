@@ -12,7 +12,7 @@ from app.main import app
 from app.providers import reset_provider_factory, set_provider_factory
 from app.providers.fake_provider import FakeLLMProvider
 from app.schemas.books import BookOut, SearchResponse
-from app.schemas.generations import CritiqueOut, KeyIdeasOut
+from app.schemas.generations import CritiqueOut, KeyIdeasOut, SummaryOut
 from app.utils.db import Base, get_db
 
 
@@ -100,6 +100,13 @@ def test_api_contracts(tmp_path, monkeypatch) -> None:
             assert parsed_key.work_id == "OL27448W"
             assert parsed_key.section == "key_ideas"
             assert parsed_key.status in {"completed", "generating", "pending", "failed"}
+
+            summary_res = await client.get("/api/books/OL27448W/summary")
+            assert summary_res.status_code == 200
+            parsed_summary = SummaryOut.model_validate(summary_res.json())
+            assert parsed_summary.work_id == "OL27448W"
+            assert parsed_summary.section == "summary_llm"
+            assert parsed_summary.summary
 
             critique_res = await client.get("/api/books/OL27448W/critique")
             assert critique_res.status_code == 200

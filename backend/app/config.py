@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     llm_provider: Literal["openai", "anthropic"] = "openai"
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.2"
+    summary_llm_model: str = "gpt-5.2"
+    key_ideas_model: str = "gpt-5.2"
+    critique_model: str = "gpt-5.2"
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-sonnet-4-5"
     generation_lease_seconds: int = 100

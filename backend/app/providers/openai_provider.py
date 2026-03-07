@@ -139,9 +139,11 @@ class OpenAIProvider(BaseProvider):
         schema_name: str,
         schema: dict,
         max_output_tokens: int,
+        model: str | None = None,
     ) -> ProviderResult:
+        selected_model = model or self.model
         payload = {
-            "model": self.model,
+            "model": selected_model,
             "input": prompt,
             "max_output_tokens": max_output_tokens,
             "text": {
@@ -172,7 +174,7 @@ class OpenAIProvider(BaseProvider):
 
         return ProviderResult(
             data=parsed,
-            model=response_payload.get("model") or self.model,
+            model=response_payload.get("model") or selected_model,
             tokens_prompt=prompt_tokens if isinstance(prompt_tokens, int) else None,
             tokens_completion=completion_tokens if isinstance(completion_tokens, int) else None,
         )

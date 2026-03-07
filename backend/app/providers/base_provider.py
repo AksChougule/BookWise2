@@ -34,5 +34,6 @@ class BaseProvider(ABC):
         schema_name: str,
         schema: dict,
         max_output_tokens: int,
+        model: str | None = None,
     ) -> ProviderResult:
         raise NotImplementedError

@@ -8,6 +8,7 @@ from app.utils.db import Base
 
 
 class GenerationSection(StrEnum):
+    SUMMARY_LLM = "summary_llm"
     KEY_IDEAS = "key_ideas"
     CRITIQUE = "critique"
 

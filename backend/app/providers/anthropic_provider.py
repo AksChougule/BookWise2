@@ -137,7 +137,9 @@ class AnthropicProvider(BaseProvider):
         schema_name: str,
         schema: dict,
         max_output_tokens: int,
+        model: str | None = None,
     ) -> ProviderResult:
+        selected_model = model or self.model
         schema_json = json.dumps(schema, ensure_ascii=True)
         system_prompt = (
             "Return only valid JSON that matches the provided JSON schema exactly. "
@@ -150,7 +152,7 @@ class AnthropicProvider(BaseProvider):
         )
 
         payload = {
-            "model": self.model,
+            "model": selected_model,
             "max_tokens": max_output_tokens,
             "system": system_prompt,
             "messages": [{"role": "user", "content": user_prompt}],
@@ -174,7 +176,7 @@ class AnthropicProvider(BaseProvider):
 
         return ProviderResult(
             data=parsed,
-            model=response_payload.get("model") or self.model,
+            model=response_payload.get("model") or selected_model,
             tokens_prompt=prompt_tokens if isinstance(prompt_tokens, int) else None,
             tokens_completion=completion_tokens if isinstance(completion_tokens, int) else None,
         )

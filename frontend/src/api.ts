@@ -28,7 +28,7 @@ export interface Book {
 export interface GenerationMeta {
   work_id: string;
   status: GenerationStatus;
-  section: "key_ideas" | "critique";
+  section: "summary_llm" | "key_ideas" | "critique";
   error_message: string | null;
   model: string | null;
   tokens_prompt: number | null;
@@ -47,6 +47,12 @@ export interface CritiqueResponse extends GenerationMeta {
   strengths: string | null;
   weaknesses: string | null;
   who_should_read: string | null;
+}
+
+export interface SummaryResponse extends GenerationMeta {
+  section: "summary_llm";
+  source: "openlibrary" | "llm";
+  summary: string | null;
 }
 
 export interface SurpriseResponse {
@@ -133,9 +139,17 @@ export function formatError(error: unknown): string {
 export const api = {
   search: (q: string) => fetchJson<SearchResponse>(`/search?q=${encodeURIComponent(q)}`),
   getBook: (workId: string) => fetchJson<Book>(`/books/${workId}`),
-  getKeyIdeas: (workId: string) => fetchJson<KeyIdeasResponse>(`/books/${workId}/key-ideas`),
-  getKeyIdeasWithMeta: (workId: string) => fetchJsonWithMeta<KeyIdeasResponse>(`/books/${workId}/key-ideas`),
-  getCritique: (workId: string) => fetchJson<CritiqueResponse>(`/books/${workId}/critique`),
-  getCritiqueWithMeta: (workId: string) => fetchJsonWithMeta<CritiqueResponse>(`/books/${workId}/critique`),
+  getSummary: (workId: string, retry = false) =>
+    fetchJson<SummaryResponse>(`/books/${workId}/summary${retry ? "?retry=true" : ""}`),
+  getSummaryWithMeta: (workId: string, retry = false) =>
+    fetchJsonWithMeta<SummaryResponse>(`/books/${workId}/summary${retry ? "?retry=true" : ""}`),
+  getKeyIdeas: (workId: string, retry = false) =>
+    fetchJson<KeyIdeasResponse>(`/books/${workId}/key-ideas${retry ? "?retry=true" : ""}`),
+  getKeyIdeasWithMeta: (workId: string, retry = false) =>
+    fetchJsonWithMeta<KeyIdeasResponse>(`/books/${workId}/key-ideas${retry ? "?retry=true" : ""}`),
+  getCritique: (workId: string, retry = false) =>
+    fetchJson<CritiqueResponse>(`/books/${workId}/critique${retry ? "?retry=true" : ""}`),
+  getCritiqueWithMeta: (workId: string, retry = false) =>
+    fetchJsonWithMeta<CritiqueResponse>(`/books/${workId}/critique${retry ? "?retry=true" : ""}`),
   surprise: () => fetchJson<SurpriseResponse>("/surprise"),
 };

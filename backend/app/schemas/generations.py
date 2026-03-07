@@ -12,8 +12,15 @@ class GenerationStatusOut(StrEnum):
 
 
 class SectionOut(StrEnum):
+    SUMMARY_LLM = "summary_llm"
     KEY_IDEAS = "key_ideas"
     CRITIQUE = "critique"
+
+
+class SummaryPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    summary: str = Field(min_length=1)
 
 
 class KeyIdeasPayload(BaseModel):
@@ -55,3 +62,9 @@ class CritiqueOut(GenerationMeta):
     strengths: str | None = None
     weaknesses: str | None = None
     who_should_read: str | None = None
+
+
+class SummaryOut(GenerationMeta):
+    section: SectionOut = SectionOut.SUMMARY_LLM
+    source: str = "llm"
+    summary: str | None = None

@@ -18,7 +18,14 @@ from app.providers import get_provider
 from app.providers.base_provider import BaseProvider, ProviderError
 from app.repositories.book_repo import BookRepository
 from app.repositories.generation_repo import GenerationRepository
-from app.schemas.generations import CritiqueOut, CritiquePayload, KeyIdeasOut, KeyIdeasPayload
+from app.schemas.generations import (
+    CritiqueOut,
+    CritiquePayload,
+    KeyIdeasOut,
+    KeyIdeasPayload,
+    SummaryOut,
+    SummaryPayload,
+)
 from app.services.prompt_store import PromptCompileError, PromptStore
 from app.utils.db import SessionLocal
 from app.utils.idempotency import compute_idempotency_key, compute_input_fingerprint
@@ -49,6 +56,7 @@ class PreparedPrompt:
 class GenerationService:
     def __init__(self, db: Session, provider: BaseProvider | None = None):
         settings = get_settings()
+        self.settings = settings
         self.db = db
         self.book_repo = BookRepository(db)
         self.generation_repo = GenerationRepository(db)
@@ -87,6 +95,28 @@ class GenerationService:
             },
             "required": ["strengths", "weaknesses", "who_should_read"],
         }
+
+    @staticmethod
+    def _summary_schema() -> dict:
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "summary": {"type": "string"},
+            },
+            "required": ["summary"],
+        }
+
+    def _model_for_section(self, section: GenerationSection) -> str:
+        if section == GenerationSection.SUMMARY_LLM:
+            return self.settings.summary_llm_model
+        if section == GenerationSection.KEY_IDEAS:
+            return self.settings.key_ideas_model
+        return self.settings.critique_model
+
+    @staticmethod
+    def _is_description_usable(description: str | None) -> bool:
+        return bool(description and description.strip())
 
     @staticmethod
     def _parse_content(content: str | None) -> dict:
@@ -137,11 +167,12 @@ class GenerationService:
             authors=book.authors,
             description=book.description,
         )
+        model_name = self._model_for_section(section)
         idempotency_key = compute_idempotency_key(
             work_id=work_id,
             section=section.value,
             prompt_hash=prompt_result.prompt_hash,
-            model=self.provider.model,
+            model=model_name,
         )
         return PreparedPrompt(
             prompt_name=prompt_name,
@@ -154,7 +185,13 @@ class GenerationService:
 
     @staticmethod
     def _log_snapshot(*, work_id: str, section: GenerationSection, generation: Generation | None) -> None:
-        route = f"/api/books/{work_id}/{'key-ideas' if section == GenerationSection.KEY_IDEAS else 'critique'}"
+        if section == GenerationSection.KEY_IDEAS:
+            section_path = "key-ideas"
+        elif section == GenerationSection.CRITIQUE:
+            section_path = "critique"
+        else:
+            section_path = "summary"
+        route = f"/api/books/{work_id}/{section_path}"
         logger.info(
             "generation_state_snapshot",
             extra={
@@ -242,7 +279,97 @@ class GenerationService:
             who_should_read=content.get("who_should_read") if isinstance(content.get("who_should_read"), str) else None,
         )
 
-    async def trigger_key_ideas(self, work_id: str) -> KeyIdeasOut:
+    @classmethod
+    def to_summary_out(cls, generation: Generation, *, source: str = "llm", summary_override: str | None = None) -> SummaryOut:
+        content = cls._parse_content(generation.content)
+        summary = summary_override if summary_override is not None else content.get("summary")
+        return SummaryOut(
+            work_id=generation.work_id,
+            status=generation.status.value,
+            section=generation.section.value,
+            source=source,
+            error_message=generation.error_message,
+            prompt_name=generation.prompt_name,
+            prompt_version=generation.prompt_version,
+            prompt_hash=generation.prompt_hash,
+            model=generation.model,
+            tokens_prompt=generation.tokens_prompt,
+            tokens_completion=generation.tokens_completion,
+            generation_time_ms=generation.generation_time_ms,
+            updated_at=generation.updated_at,
+            summary=summary if isinstance(summary, str) else None,
+        )
+
+    async def get_or_generate_summary(self, work_id: str, *, retry: bool = False) -> SummaryOut:
+        book = self.book_repo.get_by_work_id(work_id)
+        if not book:
+            record = self.generation_repo.get_or_create(work_id, GenerationSection.SUMMARY_LLM)
+            return self.to_summary_out(record)
+
+        if self._is_description_usable(book.description):
+            record = self.generation_repo.get_or_create(work_id, GenerationSection.SUMMARY_LLM)
+            record.status = GenerationStatus.COMPLETED
+            record.error_message = None
+            self.db.commit()
+            self.db.refresh(record)
+            self._log_snapshot(work_id=work_id, section=GenerationSection.SUMMARY_LLM, generation=record)
+            return self.to_summary_out(record, source="openlibrary", summary_override=book.description)
+
+        prepared = self._prepare_prompt(
+            book=book,
+            work_id=work_id,
+            section=GenerationSection.SUMMARY_LLM,
+            prompt_name="summary",
+        )
+        existing_for_key = self.generation_repo.get_by_idempotency_key(prepared.idempotency_key)
+        if existing_for_key and not (retry and existing_for_key.status == GenerationStatus.FAILED):
+            self._log_snapshot(work_id=work_id, section=GenerationSection.SUMMARY_LLM, generation=existing_for_key)
+            return self.to_summary_out(existing_for_key)
+
+        record = self.generation_repo.get_or_create(work_id, GenerationSection.SUMMARY_LLM)
+        job_id = self.generation_repo.ensure_job_id(work_id=work_id, section=GenerationSection.SUMMARY_LLM)
+        self.generation_repo.set_idempotency_fields(
+            work_id=work_id,
+            section=GenerationSection.SUMMARY_LLM,
+            prompt_name=prepared.prompt_name,
+            prompt_version=prepared.prompt_version,
+            prompt_hash=prepared.prompt_hash,
+            idempotency_key=prepared.idempotency_key,
+            input_fingerprint=prepared.input_fingerprint,
+        )
+        self._log_snapshot(work_id=work_id, section=GenerationSection.SUMMARY_LLM, generation=record)
+
+        if record.status == GenerationStatus.COMPLETED and not retry:
+            return self.to_summary_out(record)
+
+        if self.generation_repo.claim_job(
+            work_id=work_id,
+            section=GenerationSection.SUMMARY_LLM,
+            locked_by=self.worker_id,
+            lease_seconds=self.lease_seconds,
+        ):
+            self._log_metric_event(
+                event="generation_started",
+                route=f"/api/books/{work_id}/summary",
+                work_id=work_id,
+                section=GenerationSection.SUMMARY_LLM.value,
+                job_id=job_id,
+                model=self._model_for_section(GenerationSection.SUMMARY_LLM),
+                latency_ms=0,
+                tokens_prompt=None,
+                tokens_completion=None,
+                status="generating",
+            )
+            await self._run_summary(work_id, job_id=job_id, prepared=prepared)
+            self.db.expire_all()
+
+        fresh = self.generation_repo.get(work_id, GenerationSection.SUMMARY_LLM)
+        self._log_snapshot(work_id=work_id, section=GenerationSection.SUMMARY_LLM, generation=fresh)
+        if fresh is None:
+            fresh = self.generation_repo.get_or_create(work_id, GenerationSection.SUMMARY_LLM)
+        return self.to_summary_out(fresh)
+
+    async def trigger_key_ideas(self, work_id: str, *, retry: bool = False) -> KeyIdeasOut:
         book = self.book_repo.get_by_work_id(work_id)
         if not book:
             record = self.generation_repo.get_or_create(work_id, GenerationSection.KEY_IDEAS)
@@ -255,7 +382,7 @@ class GenerationService:
             prompt_name="key_ideas",
         )
         existing_for_key = self.generation_repo.get_by_idempotency_key(prepared.idempotency_key)
-        if existing_for_key:
+        if existing_for_key and not (retry and existing_for_key.status == GenerationStatus.FAILED):
             self._log_snapshot(work_id=work_id, section=GenerationSection.KEY_IDEAS, generation=existing_for_key)
             return self.to_key_ideas_out(existing_for_key)
 
@@ -272,7 +399,7 @@ class GenerationService:
         )
         self._log_snapshot(work_id=work_id, section=GenerationSection.KEY_IDEAS, generation=record)
 
-        if record.status == GenerationStatus.COMPLETED:
+        if record.status == GenerationStatus.COMPLETED and not retry:
             return self.to_key_ideas_out(record)
 
         if self.generation_repo.claim_job(
@@ -287,7 +414,7 @@ class GenerationService:
                 work_id=work_id,
                 section=GenerationSection.KEY_IDEAS.value,
                 job_id=job_id,
-                model=self.provider.model,
+                model=self._model_for_section(GenerationSection.KEY_IDEAS),
                 latency_ms=0,
                 tokens_prompt=None,
                 tokens_completion=None,
@@ -302,7 +429,7 @@ class GenerationService:
             fresh = self.generation_repo.get_or_create(work_id, GenerationSection.KEY_IDEAS)
         return self.to_key_ideas_out(fresh)
 
-    async def get_or_create_critique_status(self, work_id: str) -> CritiqueOut:
+    async def get_or_create_critique_status(self, work_id: str, *, retry: bool = False) -> CritiqueOut:
         record = self.generation_repo.get_or_create(work_id, GenerationSection.CRITIQUE)
         self._log_snapshot(work_id=work_id, section=GenerationSection.CRITIQUE, generation=record)
 
@@ -322,7 +449,7 @@ class GenerationService:
             prompt_name="critique",
         )
         existing_for_key = self.generation_repo.get_by_idempotency_key(prepared.idempotency_key)
-        if existing_for_key:
+        if existing_for_key and not (retry and existing_for_key.status == GenerationStatus.FAILED):
             self._log_snapshot(work_id=work_id, section=GenerationSection.CRITIQUE, generation=existing_for_key)
             return self.to_critique_out(existing_for_key)
 
@@ -339,7 +466,7 @@ class GenerationService:
         )
         self._log_snapshot(work_id=work_id, section=GenerationSection.CRITIQUE, generation=record)
 
-        if record.status == GenerationStatus.COMPLETED:
+        if record.status == GenerationStatus.COMPLETED and not retry:
             return self.to_critique_out(record)
 
         if self.generation_repo.claim_job(
@@ -354,7 +481,7 @@ class GenerationService:
                 work_id=work_id,
                 section=GenerationSection.CRITIQUE.value,
                 job_id=job_id,
-                model=self.provider.model,
+                model=self._model_for_section(GenerationSection.CRITIQUE),
                 latency_ms=0,
                 tokens_prompt=None,
                 tokens_completion=None,
@@ -372,6 +499,7 @@ class GenerationService:
     async def _run_key_ideas(self, work_id: str, *, job_id: str, prepared: PreparedPrompt | None = None) -> None:
         start_ms = now_ms()
         route = f"/api/books/{work_id}/key-ideas"
+        model_name = self._model_for_section(GenerationSection.KEY_IDEAS)
         with SessionLocal() as db:
             book_repo = BookRepository(db)
             generation_repo = GenerationRepository(db)
@@ -388,7 +516,7 @@ class GenerationService:
                     idempotency_key=None,
                     input_fingerprint=None,
                     job_id=job_id,
-                    model=self.provider.model,
+                    model=model_name,
                     generation_time_ms=now_ms() - start_ms,
                     error_type="unknown",
                     error_context={"reason": "book_missing"},
@@ -399,7 +527,7 @@ class GenerationService:
                     work_id=work_id,
                     section=GenerationSection.KEY_IDEAS.value,
                     job_id=job_id,
-                    model=self.provider.model,
+                    model=model_name,
                     latency_ms=failed.generation_time_ms,
                     tokens_prompt=None,
                     tokens_completion=None,
@@ -432,6 +560,7 @@ class GenerationService:
                     schema_name="key_ideas_response",
                     schema=self._key_ideas_schema(),
                     max_output_tokens=5000,
+                    model=model_name,
                 )
                 payload = KeyIdeasPayload.model_validate(result.data)
                 completed = generation_repo.mark_completed(
@@ -476,7 +605,7 @@ class GenerationService:
                     idempotency_key=idempotency_key,
                     input_fingerprint=input_fingerprint,
                     job_id=job_id,
-                    model=self.provider.model,
+                    model=model_name,
                     generation_time_ms=now_ms() - start_ms,
                     error_type=error_type,
                     error_context=error_context,
@@ -514,6 +643,7 @@ class GenerationService:
     async def _run_critique(self, work_id: str, *, job_id: str, prepared: PreparedPrompt | None = None) -> None:
         start_ms = now_ms()
         route = f"/api/books/{work_id}/critique"
+        model_name = self._model_for_section(GenerationSection.CRITIQUE)
         with SessionLocal() as db:
             book_repo = BookRepository(db)
             generation_repo = GenerationRepository(db)
@@ -530,7 +660,7 @@ class GenerationService:
                     idempotency_key=None,
                     input_fingerprint=None,
                     job_id=job_id,
-                    model=self.provider.model,
+                    model=model_name,
                     generation_time_ms=now_ms() - start_ms,
                     error_type="unknown",
                     error_context={"reason": "key_ideas_not_completed"},
@@ -541,7 +671,7 @@ class GenerationService:
                     work_id=work_id,
                     section=GenerationSection.CRITIQUE.value,
                     job_id=job_id,
-                    model=self.provider.model,
+                    model=model_name,
                     latency_ms=failed.generation_time_ms,
                     tokens_prompt=None,
                     tokens_completion=None,
@@ -563,7 +693,7 @@ class GenerationService:
                     idempotency_key=None,
                     input_fingerprint=None,
                     job_id=job_id,
-                    model=self.provider.model,
+                    model=model_name,
                     generation_time_ms=now_ms() - start_ms,
                     error_type="unknown",
                     error_context={"reason": "book_missing"},
@@ -574,7 +704,7 @@ class GenerationService:
                     work_id=work_id,
                     section=GenerationSection.CRITIQUE.value,
                     job_id=job_id,
-                    model=self.provider.model,
+                    model=model_name,
                     latency_ms=failed.generation_time_ms,
                     tokens_prompt=None,
                     tokens_completion=None,
@@ -607,6 +737,7 @@ class GenerationService:
                     schema_name="critique_response",
                     schema=self._critique_schema(),
                     max_output_tokens=2000,
+                    model=model_name,
                 )
                 payload = CritiquePayload.model_validate(result.data)
                 completed = generation_repo.mark_completed(
@@ -651,7 +782,7 @@ class GenerationService:
                     idempotency_key=idempotency_key,
                     input_fingerprint=input_fingerprint,
                     job_id=job_id,
-                    model=self.provider.model,
+                    model=model_name,
                     generation_time_ms=now_ms() - start_ms,
                     error_type=error_type,
                     error_context=error_context,
@@ -684,4 +815,132 @@ class GenerationService:
                         "error_type": error_type,
                         "error_message": failed.error_message,
                     },
+                )
+
+    async def _run_summary(self, work_id: str, *, job_id: str, prepared: PreparedPrompt | None = None) -> None:
+        start_ms = now_ms()
+        route = f"/api/books/{work_id}/summary"
+        model_name = self._model_for_section(GenerationSection.SUMMARY_LLM)
+        with SessionLocal() as db:
+            book_repo = BookRepository(db)
+            generation_repo = GenerationRepository(db)
+            book = book_repo.get_by_work_id(work_id)
+
+            if not book:
+                failed = generation_repo.mark_failed(
+                    work_id=work_id,
+                    section=GenerationSection.SUMMARY_LLM,
+                    error_message="Book metadata not found.",
+                    prompt_name=None,
+                    prompt_version=None,
+                    prompt_hash=None,
+                    idempotency_key=None,
+                    input_fingerprint=None,
+                    job_id=job_id,
+                    model=model_name,
+                    generation_time_ms=now_ms() - start_ms,
+                    error_type="unknown",
+                    error_context={"reason": "book_missing"},
+                )
+                self._log_metric_event(
+                    event="generation_failed",
+                    route=route,
+                    work_id=work_id,
+                    section=GenerationSection.SUMMARY_LLM.value,
+                    job_id=job_id,
+                    model=model_name,
+                    latency_ms=failed.generation_time_ms,
+                    tokens_prompt=None,
+                    tokens_completion=None,
+                    status=failed.status.value,
+                    error_type="unknown",
+                    error_message=failed.error_message,
+                )
+                return
+
+            prompt_name = "summary"
+            prompt_version: str | None = prepared.prompt_version if prepared else None
+            prompt_hash: str | None = prepared.prompt_hash if prepared else None
+            idempotency_key: str | None = prepared.idempotency_key if prepared else None
+            input_fingerprint: str | None = prepared.input_fingerprint if prepared else None
+            try:
+                if prepared is None:
+                    prepared = self._prepare_prompt(
+                        book=book,
+                        work_id=work_id,
+                        section=GenerationSection.SUMMARY_LLM,
+                        prompt_name=prompt_name,
+                    )
+                    prompt_version = prepared.prompt_version
+                    prompt_hash = prepared.prompt_hash
+                    idempotency_key = prepared.idempotency_key
+                    input_fingerprint = prepared.input_fingerprint
+                result = await self.provider.generate_structured(
+                    prompt=prepared.compiled_prompt,
+                    schema_name="summary_response",
+                    schema=self._summary_schema(),
+                    max_output_tokens=1200,
+                    model=model_name,
+                )
+                payload = SummaryPayload.model_validate(result.data)
+                completed = generation_repo.mark_completed(
+                    work_id=work_id,
+                    section=GenerationSection.SUMMARY_LLM,
+                    content=payload.model_dump_json(),
+                    prompt_name=prompt_name,
+                    prompt_version=prompt_version,
+                    prompt_hash=prompt_hash,
+                    idempotency_key=idempotency_key,
+                    input_fingerprint=input_fingerprint,
+                    job_id=job_id,
+                    model=result.model,
+                    tokens_prompt=result.tokens_prompt,
+                    tokens_completion=result.tokens_completion,
+                    generation_time_ms=now_ms() - start_ms,
+                )
+                self._log_metric_event(
+                    event="generation_completed",
+                    route=route,
+                    work_id=work_id,
+                    section=GenerationSection.SUMMARY_LLM.value,
+                    job_id=completed.job_id,
+                    model=completed.model,
+                    latency_ms=completed.generation_time_ms,
+                    tokens_prompt=completed.tokens_prompt,
+                    tokens_completion=completed.tokens_completion,
+                    status=completed.status.value,
+                )
+            except Exception as exc:  # noqa: BLE001
+                error_type, error_context = self._error_payload(exc)
+                message = (
+                    f"{PromptCompileError.error_type}: {exc}" if isinstance(exc, PromptCompileError) else str(exc)
+                )
+                failed = generation_repo.mark_failed(
+                    work_id=work_id,
+                    section=GenerationSection.SUMMARY_LLM,
+                    error_message=message,
+                    prompt_name=prompt_name,
+                    prompt_version=prompt_version,
+                    prompt_hash=prompt_hash,
+                    idempotency_key=idempotency_key,
+                    input_fingerprint=input_fingerprint,
+                    job_id=job_id,
+                    model=model_name,
+                    generation_time_ms=now_ms() - start_ms,
+                    error_type=error_type,
+                    error_context=error_context,
+                )
+                self._log_metric_event(
+                    event="generation_failed",
+                    route=route,
+                    work_id=work_id,
+                    section=GenerationSection.SUMMARY_LLM.value,
+                    job_id=failed.job_id,
+                    model=failed.model,
+                    latency_ms=failed.generation_time_ms,
+                    tokens_prompt=None,
+                    tokens_completion=None,
+                    status=failed.status.value,
+                    error_type=error_type,
+                    error_message=failed.error_message,
                 )
