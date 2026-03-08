@@ -84,6 +84,7 @@ def test_external_sections_endpoints(tmp_path, monkeypatch) -> None:
                     "thumbnails": {"high": {"url": "https://img.youtube/abc123.jpg"}},
                 },
                 "statistics": {"viewCount": "12345"},
+                "contentDetails": {"duration": "PT22M15S"},
             }
             for video_id in video_ids
         }

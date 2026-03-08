@@ -282,6 +282,8 @@ body {
   gap: 0.6rem;
   align-items: start;
   background: #fff;
+  position: relative;
+  overflow: hidden;
 }
 
 .book-mini-cover {
@@ -309,6 +311,28 @@ body {
   margin: 0.2rem 0 0;
   color: #64748b;
   font-size: 0.77rem;
+}
+
+.book-mini-action {
+  position: absolute;
+  right: 0.45rem;
+  bottom: 0.45rem;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 8px;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.75rem;
+  text-decoration: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.book-mini-card:hover .book-mini-action,
+.book-mini-card:focus-within .book-mini-action {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .video-grid {

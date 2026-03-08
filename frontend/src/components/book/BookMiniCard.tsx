@@ -1,4 +1,5 @@
 import { AuthorBookItem } from "../../api";
+import { Link } from "react-router-dom";
 
 type BookMiniCardProps = {
   book: AuthorBookItem;
@@ -17,6 +18,9 @@ export function BookMiniCard({ book }: BookMiniCardProps) {
         <p className="book-mini-meta">{book.authors ?? "Unknown author"}</p>
         <p className="book-mini-meta">{book.first_publish_year ?? "Unknown year"}</p>
       </div>
+      <Link className="book-mini-action" to={`/book/${book.work_id}`}>
+        Search this book
+      </Link>
     </article>
   );
 }

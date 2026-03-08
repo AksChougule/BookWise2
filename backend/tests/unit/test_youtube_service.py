@@ -68,6 +68,7 @@ class _FakeYouTubeClient:
                     "thumbnails": {"high": {"url": "https://img/1.jpg"}},
                 },
                 "statistics": {"viewCount": "5000"},
+                "contentDetails": {"duration": "PT18M2S"},
             },
             "vid2": {
                 "snippet": {
@@ -78,6 +79,7 @@ class _FakeYouTubeClient:
                     "thumbnails": {"high": {"url": "https://img/2.jpg"}},
                 },
                 "statistics": {"viewCount": "9000"},
+                "contentDetails": {"duration": "PT12M10S"},
             },
             "vid3": {
                 "snippet": {
@@ -88,6 +90,7 @@ class _FakeYouTubeClient:
                     "thumbnails": {"high": {"url": "https://img/3.jpg"}},
                 },
                 "statistics": {"viewCount": "2000"},
+                "contentDetails": {"duration": "PT16M0S"},
             },
         }
         return {video_id: data[video_id] for video_id in video_ids if video_id in data}
@@ -114,13 +117,13 @@ def test_youtube_service_persists_then_reuses_cache() -> None:
 
         first = asyncio.run(service.get_for_book(work_id="OLYT1W", title="Book", authors_text="Author"))
         assert first.source == "api"
-        assert len(first.videos) == 3
-        assert [video.video_id for video in first.videos] == ["vid2", "vid1", "vid3"]
+        assert len(first.videos) == 2
+        assert [video.video_id for video in first.videos] == ["vid1", "vid3"]
         assert client.search_calls == 3
         assert client.detail_calls == 1
 
         second = asyncio.run(service.get_for_book(work_id="OLYT1W", title="Book", authors_text="Author"))
         assert second.source == "cache"
-        assert len(second.videos) == 3
+        assert len(second.videos) == 2
         assert client.search_calls == 3
         assert client.detail_calls == 1

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from time import perf_counter
 
 from app.clients.youtube_client import YouTubeClient
@@ -11,6 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class YouTubeService:
+    _ISO_DURATION_RE = re.compile(
+        r"^P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?$"
+    )
+
     def __init__(self, repo: YouTubeRepository, client: YouTubeClient):
         self.repo = repo
         self.client = client
@@ -29,6 +34,19 @@ class YouTubeService:
         if isinstance(value, str) and value.isdigit():
             return int(value)
         return 0
+
+    @classmethod
+    def _duration_seconds(cls, value: str | None) -> int:
+        if not isinstance(value, str):
+            return 0
+        match = cls._ISO_DURATION_RE.match(value)
+        if not match:
+            return 0
+        days = int(match.group("days") or 0)
+        hours = int(match.group("hours") or 0)
+        minutes = int(match.group("minutes") or 0)
+        seconds = int(match.group("seconds") or 0)
+        return (days * 86400) + (hours * 3600) + (minutes * 60) + seconds
 
     @staticmethod
     def _extract_primary_author(authors_text: str | None) -> str:
@@ -107,12 +125,17 @@ class YouTubeService:
             detail = details.get(video_id, {})
             snippet = detail.get("snippet") if isinstance(detail.get("snippet"), dict) else candidate["snippet"]
             stats = detail.get("statistics") if isinstance(detail.get("statistics"), dict) else {}
+            content_details = (
+                detail.get("contentDetails") if isinstance(detail.get("contentDetails"), dict) else {}
+            )
 
             language = (snippet.get("defaultAudioLanguage") or snippet.get("defaultLanguage") or "").lower()
             title_text = str(snippet.get("title") or "")
             if language and not language.startswith("en"):
                 continue
             if not language and not self._title_looks_english(title_text):
+                continue
+            if self._duration_seconds(content_details.get("duration")) < 900:
                 continue
 
             channel = str(snippet.get("channelTitle") or "Unknown channel")

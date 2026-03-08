@@ -27,6 +27,31 @@ class AuthorBooksService:
             return f"https://covers.openlibrary.org/b/id/{cover_id}-M.jpg"
         return None
 
+    @staticmethod
+    def _is_english_doc(doc: dict) -> bool:
+        language_values: list[str] = []
+        for field in ("language", "edition_language"):
+            values = doc.get(field)
+            if not isinstance(values, list):
+                continue
+            for value in values:
+                if isinstance(value, str):
+                    language_values.append(value.lower())
+                elif isinstance(value, dict):
+                    key = value.get("key")
+                    if isinstance(key, str):
+                        language_values.append(key.lower())
+
+        if not language_values:
+            return False
+
+        return any(
+            value in {"eng", "en", "/languages/eng", "/languages/en"}
+            or value.endswith("/eng")
+            or value.endswith("/en")
+            for value in language_values
+        )
+
     async def fetch_for_book(self, *, work_id: str, authors_text: str | None) -> AuthorBooksOut:
         authors = self._extract_primary_authors(authors_text)
         groups: list[AuthorBooksGroupOut] = []
@@ -50,6 +75,8 @@ class AuthorBooksService:
 
             for doc in docs:
                 if not isinstance(doc, dict):
+                    continue
+                if not self._is_english_doc(doc):
                     continue
                 work_key = doc.get("key")
                 if not isinstance(work_key, str) or not work_key.startswith("/works/"):

@@ -17,6 +17,7 @@ class _FakeOpenLibraryClient:
                     "author_name": [author],
                     "first_publish_year": 2001,
                     "cover_i": 11,
+                    "language": ["/languages/eng"],
                 },
                 {
                     "key": "/works/OL3W",
@@ -24,6 +25,7 @@ class _FakeOpenLibraryClient:
                     "author_name": [author],
                     "first_publish_year": 2005,
                     "cover_i": 12,
+                    "language": ["/languages/fre"],
                 },
             ]
         }
@@ -43,5 +45,6 @@ def test_author_books_groups_first_three_authors_and_limits_books() -> None:
     assert len(result.groups) == 3
     assert [group.author for group in result.groups] == ["Author A", "Author B", "Author C"]
     assert all(len(group.books) <= 6 for group in result.groups)
+    assert all(len(group.books) == 1 for group in result.groups)
     assert len(client.calls) == 3
     assert result.groups[0].books[0].cover_url == "https://covers.openlibrary.org/b/id/11-M.jpg"
