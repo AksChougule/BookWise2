@@ -34,3 +34,11 @@ class YouTubeVideosOut(BaseModel):
     work_id: str
     source: str
     videos: list[YouTubeVideoOut]
+
+
+class ExploreLinksOut(BaseModel):
+    work_id: str
+    source: str
+    amazon_url: str
+    goodreads_url: str
+    author_website: str | None = None

@@ -94,6 +94,14 @@ export interface YouTubeVideosResponse {
   videos: YouTubeVideo[];
 }
 
+export interface ExploreLinksResponse {
+  work_id: string;
+  source: "cache" | "resolved";
+  amazon_url: string;
+  goodreads_url: string;
+  author_website: string | null;
+}
+
 export interface ApiMeta {
   requestId: string | null;
 }
@@ -188,5 +196,7 @@ export const api = {
     fetchJsonWithMeta<AuthorBooksResponse>(`/books/${workId}/other-books`),
   getYoutubeVideos: (workId: string) =>
     fetchJsonWithMeta<YouTubeVideosResponse>(`/books/${workId}/youtube-videos`),
+  getExploreMore: (workId: string) =>
+    fetchJsonWithMeta<ExploreLinksResponse>(`/books/${workId}/explore-more`),
   surprise: () => fetchJson<SurpriseResponse>("/surprise"),
 };

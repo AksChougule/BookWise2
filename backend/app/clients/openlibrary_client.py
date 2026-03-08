@@ -28,9 +28,12 @@ class OpenLibraryClient:
     async def get_work(self, work_id: str) -> dict[str, Any]:
         return await self._get_json(f"/works/{work_id}.json")
 
+    async def get_author(self, author_key: str) -> dict[str, Any]:
+        return await self._get_json(f"{author_key}.json")
+
     async def get_author_name(self, author_key: str) -> str | None:
         try:
-            author_data = await self._get_json(f"{author_key}.json")
+            author_data = await self.get_author(author_key)
         except httpx.HTTPError:
             return None
         name = author_data.get("name")

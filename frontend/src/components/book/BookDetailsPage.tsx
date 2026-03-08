@@ -7,6 +7,7 @@ import {
   AuthorBooksResponse,
   Book,
   CritiqueResponse,
+  ExploreLinksResponse,
   formatError,
   GenerationStatus,
   KeyIdeasResponse,
@@ -16,6 +17,7 @@ import {
 } from "../../api";
 import { AuthorBooksSection } from "./AuthorBooksSection";
 import { CritiqueSection } from "./CritiqueSection";
+import { ExploreMoreSection } from "./ExploreMoreSection";
 import { KeyIdeasSection } from "./KeyIdeasSection";
 import { SectionContainer } from "./SectionContainer";
 import { StickyBookRail } from "./StickyBookRail";
@@ -118,6 +120,11 @@ export function BookDetailsPage() {
     loading: true,
     error: null,
   });
+  const [exploreMore, setExploreMore] = useState<SectionState<ExploreLinksResponse>>({
+    data: null,
+    loading: true,
+    error: null,
+  });
   const [selectedVideo, setSelectedVideo] = useState<YouTubeVideo | null>(null);
 
   const prefetchExternalSections = async (cancelled: () => boolean): Promise<void> => {
@@ -127,6 +134,7 @@ export function BookDetailsPage() {
 
     setOtherBooks({ data: null, loading: true, error: null });
     setYoutubeVideos({ data: null, loading: true, error: null });
+    setExploreMore({ data: null, loading: true, error: null });
 
     const [otherResult, youtubeResult] = await Promise.allSettled([
       api.getOtherBooks(workId),
@@ -147,6 +155,17 @@ export function BookDetailsPage() {
       setYoutubeVideos({ data: youtubeResult.value.data, loading: false, error: null });
     } else {
       setYoutubeVideos({ data: null, loading: false, error: formatError(youtubeResult.reason) });
+    }
+
+    try {
+      const exploreResult = await api.getExploreMore(workId);
+      if (!cancelled()) {
+        setExploreMore({ data: exploreResult.data, loading: false, error: null });
+      }
+    } catch (error) {
+      if (!cancelled()) {
+        setExploreMore({ data: null, loading: false, error: formatError(error) });
+      }
     }
   };
 
@@ -207,6 +226,7 @@ export function BookDetailsPage() {
     setCritique({ data: null, loading: true, error: null });
     setOtherBooks({ data: null, loading: true, error: null });
     setYoutubeVideos({ data: null, loading: true, error: null });
+    setExploreMore({ data: null, loading: true, error: null });
     setSelectedVideo(null);
 
     void (async () => {
@@ -265,7 +285,7 @@ export function BookDetailsPage() {
       window.removeEventListener("scroll", computeActiveSection);
       window.removeEventListener("resize", computeActiveSection);
     };
-  }, [summary.data, keyIdeas.data, critique.data, otherBooks.data, youtubeVideos.data]);
+  }, [summary.data, keyIdeas.data, critique.data, otherBooks.data, youtubeVideos.data, exploreMore.data]);
 
   const onNavigate = (id: string) => {
     setActiveSection(id);
@@ -342,7 +362,7 @@ export function BookDetailsPage() {
           </SectionContainer>
 
           <SectionContainer id="explore-more" title="Explore More">
-            <p className="placeholder-copy">Section scaffolded for Sprint 3.</p>
+            <ExploreMoreSection state={exploreMore} />
           </SectionContainer>
         </div>
       </div>

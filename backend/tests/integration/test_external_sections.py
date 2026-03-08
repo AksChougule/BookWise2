@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.clients.openlibrary_client import OpenLibraryClient
 from app.clients.youtube_client import YouTubeClient
 from app.main import app
-from app.schemas.external_sections import AuthorBooksOut, YouTubeVideosOut
+from app.schemas.external_sections import AuthorBooksOut, ExploreLinksOut, YouTubeVideosOut
 from app.utils.db import Base, get_db
 
 
@@ -88,9 +88,21 @@ def test_external_sections_endpoints(tmp_path, monkeypatch) -> None:
             for video_id in video_ids
         }
 
+    async def fake_get_author(self, author_key: str):
+        _ = (self, author_key)
+        return {
+            "links": [
+                {
+                    "title": "Official Website",
+                    "url": "https://tolkienestate.example.com",
+                }
+            ]
+        }
+
     monkeypatch.setattr(OpenLibraryClient, "get_work", fake_get_work)
     monkeypatch.setattr(OpenLibraryClient, "get_author_name", fake_get_author_name)
     monkeypatch.setattr(OpenLibraryClient, "search_books_by_author", fake_search_books_by_author)
+    monkeypatch.setattr(OpenLibraryClient, "get_author", fake_get_author)
     monkeypatch.setattr(YouTubeClient, "search_videos", fake_search_videos)
     monkeypatch.setattr(YouTubeClient, "get_video_details", fake_get_video_details)
 
@@ -115,6 +127,18 @@ def test_external_sections_endpoints(tmp_path, monkeypatch) -> None:
             assert youtube_cached_res.status_code == 200
             parsed_youtube_cached = YouTubeVideosOut.model_validate(youtube_cached_res.json())
             assert parsed_youtube_cached.source == "cache"
+
+            explore_res = await client.get("/api/books/OL27448W/explore-more")
+            assert explore_res.status_code == 200
+            parsed_explore = ExploreLinksOut.model_validate(explore_res.json())
+            assert parsed_explore.work_id == "OL27448W"
+            assert parsed_explore.amazon_url
+            assert parsed_explore.goodreads_url
+
+            explore_cached_res = await client.get("/api/books/OL27448W/explore-more")
+            assert explore_cached_res.status_code == 200
+            parsed_explore_cached = ExploreLinksOut.model_validate(explore_cached_res.json())
+            assert parsed_explore_cached.source == "cache"
 
     try:
         asyncio.run(run())
