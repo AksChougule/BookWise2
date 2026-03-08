@@ -1,5 +1,7 @@
+@import url("https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Playfair+Display:wght@600;700&display=swap");
+
 :root {
-  --bg: #f8fafc;
+  --bg: #faf8f5;
   --ink: #0f172a;
   --muted: #475569;
   --paper: #ffffff;
@@ -14,7 +16,7 @@
 body {
   margin: 0;
   color: var(--ink);
-  background: radial-gradient(1200px 700px at -10% -20%, #dbeafe 0, transparent 70%), var(--bg);
+  background: var(--bg);
   font-family: "Inter", "Segoe UI", sans-serif;
 }
 
@@ -26,11 +28,37 @@ body {
 .hero h1 {
   margin: 0;
   font-size: clamp(2rem, 5vw, 3rem);
+  font-family: "Playfair Display", Georgia, serif;
+  font-weight: 700;
 }
 
 .hero p {
   color: var(--muted);
-  margin-top: 0.5rem;
+  margin-top: 0.6rem;
+  margin-bottom: 0;
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-weight: 400;
+}
+
+.landing-quote-panel {
+  margin: 5rem 0 9rem;
+  background: transparent;
+  padding: 0;
+}
+
+.landing-quote-text {
+  margin: 0;
+  color: #64748b;
+  font-size: clamp(1.2rem, 3vw, 1.6rem);
+  line-height: 1.34;
+  font-family: "Palatino Linotype", "Book Antiqua", Garamond, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 500;
+  transition: opacity 220ms ease;
+}
+
+.landing-quote-text.is-fading {
+  opacity: 0.75;
 }
 
 .search-controls {

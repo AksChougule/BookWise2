@@ -3,6 +3,7 @@ import { Route, Routes, useNavigate } from "react-router-dom";
 
 import { api, formatError, SearchBook } from "./api";
 import { BookDetailsPage } from "./components/book/BookDetailsPage";
+import { LandingQuotePanel } from "./components/quotes/LandingQuotePanel";
 import { SearchBar } from "./components/search/SearchBar";
 import { SearchResultsPanel } from "./components/search/SearchResultsPanel";
 
@@ -81,9 +82,11 @@ function SearchPage() {
   return (
     <main className="container">
       <header className="hero">
-        <h1>BookWise 2</h1>
-        <p>Search Open Library, then auto-generate Key Ideas and Critique.</p>
+        <h1>BookWise</h1>
+        <p>Never Miss The Big Ideas</p>
       </header>
+
+      <LandingQuotePanel />
 
       <SearchBar value={queryInput} loading={loading} onChange={setQueryInput} onSurprise={onSurprise} />
       <SearchResultsPanel
