@@ -44,7 +44,7 @@ export function SummarySection({ state, onRetry }: SummarySectionProps) {
   }
 
   return (
-    <div className="content-block">
+    <div className="content-block section-body">
       {state.data?.summary ? <p>{state.data.summary}</p> : <p>No summary available.</p>}
       <p className="muted-small">Source: {state.data?.source ?? "llm"}</p>
     </div>

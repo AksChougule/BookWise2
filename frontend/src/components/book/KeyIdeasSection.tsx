@@ -32,5 +32,5 @@ export function KeyIdeasSection({ state, onRetry }: KeyIdeasSectionProps) {
     );
   }
 
-  return <pre className="content-box">{state.data?.key_ideas ?? "No key ideas available."}</pre>;
+  return <pre className="content-box section-body section-pre">{state.data?.key_ideas ?? "No key ideas available."}</pre>;
 }

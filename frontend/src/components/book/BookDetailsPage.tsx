@@ -38,8 +38,8 @@ const SECTION_ITEMS = [
   { id: "summary", label: "Summary" },
   { id: "key-ideas", label: "Key Ideas" },
   { id: "critique", label: "Critique" },
+  { id: "youtube-videos", label: "Related Videos" },
   { id: "other-books", label: "Other Books by Same Author" },
-  { id: "youtube-videos", label: "YouTube Videos" },
   { id: "explore-more", label: "Explore More" },
 ] as const;
 
@@ -336,7 +336,7 @@ export function BookDetailsPage() {
 
         <div className="details-content">
           <p className="mobile-only">
-            <Link to="/">Return to search results</Link>
+            <Link to="/">Return to search page</Link>
           </p>
 
           {bookError ? <pre className="error-box">{bookError}</pre> : null}
@@ -353,12 +353,12 @@ export function BookDetailsPage() {
             <CritiqueSection state={critique} onRetry={() => void runSections({ critique: true })} />
           </SectionContainer>
 
-          <SectionContainer id="other-books" title="Other Books by Same Author">
-            <AuthorBooksSection state={otherBooks} />
+          <SectionContainer id="youtube-videos" title="Related Videos">
+            <YouTubeVideosSection state={youtubeVideos} onOpenVideo={setSelectedVideo} />
           </SectionContainer>
 
-          <SectionContainer id="youtube-videos" title="YouTube Videos">
-            <YouTubeVideosSection state={youtubeVideos} onOpenVideo={setSelectedVideo} />
+          <SectionContainer id="other-books" title="Other Books by Same Author">
+            <AuthorBooksSection state={otherBooks} />
           </SectionContainer>
 
           <SectionContainer id="explore-more" title="Explore More">

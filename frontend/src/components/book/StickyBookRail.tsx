@@ -14,7 +14,7 @@ export function StickyBookRail({ book, activeId, sectionItems, onNavigate }: Sti
   return (
     <aside className="sticky-rail desktop-only">
       <p>
-        <Link to="/">Return to search results</Link>
+        <Link to="/">Return to search page</Link>
       </p>
       <div className="rail-cover-wrap">
         {book?.cover_url ? (

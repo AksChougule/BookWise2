@@ -16,7 +16,7 @@ export function YouTubeVideosSection({ state, onOpenVideo }: YouTubeVideosSectio
   if (state.loading) {
     return (
       <div className="placeholder">
-        <p>Loading YouTube videos…</p>
+        <p>Loading related videos…</p>
         <p className="muted-small">Please wait while we fetch the best matches.</p>
       </div>
     );
@@ -31,7 +31,7 @@ export function YouTubeVideosSection({ state, onOpenVideo }: YouTubeVideosSectio
   }
 
   return (
-    <div>
+    <div className="section-body">
       <p className="muted-small">Source: {state.data.source}</p>
       <VideoGrid videos={state.data.videos} onOpen={onOpenVideo} />
     </div>

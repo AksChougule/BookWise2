@@ -1,4 +1,5 @@
 import { AuthorBooksResponse } from "../../api";
+import { AuthorGroup } from "./AuthorGroup";
 
 type SectionState<T> = {
   data: T | null;
@@ -9,8 +10,6 @@ type SectionState<T> = {
 type AuthorBooksSectionProps = {
   state: SectionState<AuthorBooksResponse>;
 };
-
-import { AuthorGroup } from "./AuthorGroup";
 
 export function AuthorBooksSection({ state }: AuthorBooksSectionProps) {
   if (state.loading) {
@@ -31,7 +30,7 @@ export function AuthorBooksSection({ state }: AuthorBooksSectionProps) {
   }
 
   return (
-    <div className="author-groups-wrap">
+    <div className="author-groups-wrap section-body">
       {state.data.groups.map((group) => (
         <AuthorGroup key={group.author} group={group} />
       ))}

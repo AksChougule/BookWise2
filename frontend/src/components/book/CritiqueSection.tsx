@@ -33,7 +33,7 @@ export function CritiqueSection({ state, onRetry }: CritiqueSectionProps) {
   }
 
   return (
-    <div className="content-block">
+    <div className="content-block section-body">
       <h3>Strengths</h3>
       <p>{state.data?.strengths ?? "Not available."}</p>
       <h3>Weaknesses</h3>

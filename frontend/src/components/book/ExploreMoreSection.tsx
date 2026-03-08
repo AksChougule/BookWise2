@@ -29,7 +29,7 @@ export function ExploreMoreSection({ state }: ExploreMoreSectionProps) {
   }
 
   return (
-    <div className="explore-links-grid">
+    <div className="explore-links-grid section-body">
       <a href={state.data.amazon_url} target="_blank" rel="noreferrer noopener" className="explore-link-card">
         <p className="explore-link-title">Amazon</p>
         <p className="explore-link-meta">Open external link</p>
