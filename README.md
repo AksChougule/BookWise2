@@ -2,8 +2,11 @@
 
 BookWise 2 is a local full-stack web app that lets you search Open Library, open a book page, and automatically generate:
 
-1. `Key Ideas` (first)
-2. `Critique` (queued asynchronously after Key Ideas completes)
+1. `Book Summary`
+2. `Key Ideas` 
+3. `Critique` (queued asynchronously after Key Ideas completes)
+4. `Realted Videos` and Podcast episodes
+5. `External links` to explore more like purchase on Amazon, reviews on Goodreads, author's website
 
 Generated content and metadata are persisted in SQLite and reused on subsequent loads.
 
