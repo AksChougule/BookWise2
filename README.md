@@ -10,6 +10,32 @@ BookWise 2 is a local full-stack web app that lets you search Open Library, open
 
 Generated content and metadata are persisted in SQLite and reused on subsequent loads.
 
+## Screenshots
+
+Landing Page with instant search
+<img width="1253" height="979" alt="Screenshot from 2026-03-11 21-34-13" src="https://github.com/user-attachments/assets/ab8baf92-6c67-4738-a3b4-174f14528922" />
+
+
+Book Summary
+<img width="1108" height="719" alt="Screenshot from 2026-03-11 22-14-26" src="https://github.com/user-attachments/assets/47cc9105-b32d-47b7-9987-c35d9494e9e9" />
+
+
+Key Ideas from the Book
+<img width="1153" height="920" alt="Screenshot from 2026-03-11 21-50-08" src="https://github.com/user-attachments/assets/11194dea-6c44-4762-b5f6-42c3764c4c68" />
+
+
+Book Critique
+<img width="1118" height="941" alt="Screenshot from 2026-03-11 22-16-39" src="https://github.com/user-attachments/assets/63e3218f-872a-42e1-be17-2ec40b9dff36" />
+
+
+Book Related Videos
+<img width="1148" height="937" alt="Screenshot from 2026-03-11 21-56-35" src="https://github.com/user-attachments/assets/a0265708-f0c4-4678-976b-16590af2eab6" />
+
+
+Other books by same author (with one click insights)
+<img width="1151" height="916" alt="Screenshot from 2026-03-11 21-53-02" src="https://github.com/user-attachments/assets/9cacc51e-a7c7-47b3-b445-6c1b67da3e03" />
+
+
 ## Stack
 
 - Backend: FastAPI, SQLAlchemy 2.0, Alembic, Poetry
