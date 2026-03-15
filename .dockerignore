@@ -1,0 +1,35 @@
+# VCS
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node/build outputs
+node_modules/
+dist/
+build/
+
+# Env/secrets
+.env
+.env.*
+secrets/
+
+# SQLite/local data
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+backend/data/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

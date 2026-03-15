@@ -1,0 +1,55 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Persist SQLite inside a Docker named volume.
+      DATABASE_URL: sqlite:////app/data/bookwise.db
+      # Secrets are read from mounted files.
+      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
+      YOUTUBE_API_KEY_FILE: /run/secrets/youtube_api_key
+      # Keep surprise endpoint working in container.
+      CURATED_BOOKS_PATH: /app/curated_books.yml
+    volumes:
+      - bookwise_sqlite_data:/app/data
+      - ./curated_books.yml:/app/curated_books.yml:ro
+    secrets:
+      - openai_api_key
+      - youtube_api_key
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      # Browser calls /api; Vite proxy forwards to backend service.
+      VITE_API_PROXY_TARGET: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  bookwise_sqlite_data:
+
+secrets:
+  openai_api_key:
+    file: ./secrets/openai_api_key
+  youtube_api_key:
+    file: ./secrets/youtube_api_key
