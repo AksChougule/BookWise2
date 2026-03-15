@@ -11,8 +11,6 @@ services:
       # Secrets are read from mounted files.
       OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
       YOUTUBE_API_KEY_FILE: /run/secrets/youtube_api_key
-      # Keep surprise endpoint working in container.
-      CURATED_BOOKS_PATH: /app/curated_books.yml
     volumes:
       - bookwise_sqlite_data:/app/data
       - ./curated_books.yml:/app/curated_books.yml:ro

@@ -1,12 +1,22 @@
-# BookWise 2 (MVP)
+# BookWise 
+## Never Miss the Big Ideas
 
-BookWise 2 is a local full-stack web app that lets you search Open Library, open a book page, and automatically generate:
+Books are amazing way to consume knowledge. Retaining that knowledge in our memory however is not an easy task. And if we can't retain the insights, it is harder to test these and put to use influencing our life positively.
+
+Research on the forgetting curve shows learners, within 24 hours forget an average of 70% of new information; and within a week, they forget up to 90% [soure](https://www.indegene.com/what-we-think/reports/understanding-science-behind-learning-retention)
+
+I have repeatedly observed that while reading I find certain books highly insightful but later struggled to recall most of the insights. Talking about a book you liked with your friends and family members can help you retain some information for longer time but it will help you revise and remember only what you have retained at the time of a conversation.
+
+So I built BookWise, that helps refresh the memory so we do not forget the big ideas. This is not goodreads where you see the reviews. This is an attempt to offer a cleaner approach to spend quality time with your favourite books you and internalize the insights.
+
+BookWise is a local full-stack web app that lets you search Open Library, open a book page, and automatically generate:
 
 1. `Book Summary`
 2. `Key Ideas` 
-3. `Critique` (queued asynchronously after Key Ideas completes)
-4. `Realted Videos` and Podcast episodes
+3. `Critique`
+4. `Realted Videos and Podcasts`
 5. `External links` to explore more like purchase on Amazon, reviews on Goodreads, author's website
+
 
 Generated content and metadata are persisted in SQLite and reused on subsequent loads.
 
@@ -45,9 +55,9 @@ Other books by same author (with one click insights)
 
 ## Project Layout
 
-- `backend/` FastAPI app (`api/services/repositories/clients/models/schemas/prompts/utils`)
+- `backend/` FastAPI app 
 - `frontend/` Vite React app
-- `curated_books.yml` curated data for Surprise Me
+- `curated_books.yml` curated list of Books for the "Surprise Me" option
 
 ## Prerequisites
 
@@ -56,48 +66,11 @@ Other books by same author (with one click insights)
 - Node `20+`
 - npm `10+`
 - OpenAI API key
+- YouTube Search API key (optional)
 
-## Backend Setup
+## Docker Quick Start
 
-```bash
-cd backend
-cp .env.example .env
-# edit .env and set OPENAI_API_KEY
-
-poetry install
-poetry run alembic upgrade head
-poetry run uvicorn app.main:app --port 8000
-```
-
-Backend docs: `http://localhost:8000/docs`
-
-### Backend Environment Variables
-
-- `OPENAI_API_KEY` (required for generation)
-- `OPENAI_MODEL` (optional, default: `gpt-5.2`)
-- `BOOKWISE_DB_URL` (optional, default: `sqlite:///./bookwise.db`)
-
-## Frontend Setup
-
-```bash
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
-```
-
-Frontend: `http://localhost:5173`
-
-## MVP User Flows
-
-- Search flow:
-  - `/` search for books
-  - open `/book/:workId`
-  - frontend polls `/api/books/{work_id}/key-ideas` first, then `/api/books/{work_id}/critique` after key ideas completes
-- Surprise flow:
-  - click `Surprise Me` (calls `/api/surprise`)
-  - app navigates to `/book/:workId`
-  - generation starts automatically if missing
+For local Docker setup (frontend + backend + SQLite persistence + secrets), see [DOCKER.md](DOCKER.md).
 
 ## API Endpoints
 
@@ -106,27 +79,3 @@ Frontend: `http://localhost:5173`
 - `GET /api/books/{work_id}/key-ideas`
 - `GET /api/books/{work_id}/critique`
 - `GET /api/surprise`
-
-## Generation Behavior
-
-- Prompt context sent to LLM: title + author only
-- Token caps:
-  - Key Ideas: `5000`
-  - Critique: `2000`
-- Concurrency control:
-  - DB row claim (`pending/failed -> generating`) prevents duplicate LLM calls for same `work_id + section`
-- Critique generation starts only after Key Ideas is completed
-- Generation results are cached and reused (no regenerate button in MVP)
-
-## Polling and UI Error Handling
-
-- Polls each section every 5 seconds, max 18 retries (~90s window)
-- Shows skeleton with `Please wait...` while pending/generating
-- If failed: displays detailed `error_message`, `section`, `model`
-- If still pending after max retries: displays timeout error
-
-## Observability
-
-- Structured JSON logs
-- `request_id` middleware with `X-Request-ID` response header
-- Generation event logs include section/model/duration/token usage/errors
