@@ -11,6 +11,7 @@ from app.utils.db import Base
 
 class _FakeYouTubeClient:
     def __init__(self) -> None:
+        self.api_key = "test-key"
         self.search_calls = 0
         self.detail_calls = 0
 
@@ -127,3 +128,17 @@ def test_youtube_service_persists_then_reuses_cache() -> None:
         assert len(second.videos) == 2
         assert client.search_calls == 3
         assert client.detail_calls == 1
+
+
+def test_youtube_service_returns_empty_when_key_missing() -> None:
+    maker = _session_factory()
+    client = _FakeYouTubeClient()
+    client.api_key = None
+
+    with maker() as db:
+        service = YouTubeService(repo=YouTubeRepository(db), client=client)
+        result = asyncio.run(service.get_for_book(work_id="OLYT2W", title="Book", authors_text="Author"))
+        assert result.source == "disabled"
+        assert result.videos == []
+        assert client.search_calls == 0
+        assert client.detail_calls == 0

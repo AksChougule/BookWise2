@@ -55,6 +55,16 @@ class YouTubeService:
         return authors_text.split(",", maxsplit=1)[0].strip()
 
     async def get_for_book(self, *, work_id: str, title: str, authors_text: str | None) -> YouTubeVideosOut:
+        if not getattr(self.client, "api_key", None):
+            logger.info(
+                "youtube_disabled",
+                extra={
+                    "event": "youtube_disabled",
+                    "work_id": work_id,
+                },
+            )
+            return YouTubeVideosOut(work_id=work_id, source="disabled", videos=[])
+
         cached = self.repo.list_by_work_id(work_id)
         if cached:
             logger.info(

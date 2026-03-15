@@ -94,6 +94,11 @@ def root() -> dict[str, str]:
     return {"status": "ok", "request_id": get_request_id(), "trace_id": get_trace_id()}
 
 
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 app.include_router(api_router, prefix=settings.api_prefix)
 
 
@@ -106,6 +111,6 @@ async def startup_log_configuration() -> None:
             "openai_key_present": bool(settings.openai_api_key),
             "youtube_key_present": bool(settings.youtube_api_key),
             "openai_model": settings.openai_model,
-            "db_url": settings.bookwise_db_url,
+            "db_url": settings.database_url,
         },
     )

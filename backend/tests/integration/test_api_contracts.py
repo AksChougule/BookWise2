@@ -84,6 +84,10 @@ def test_api_contracts(tmp_path, monkeypatch) -> None:
     async def run() -> None:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
+            health_res = await client.get("/health")
+            assert health_res.status_code == 200
+            assert health_res.json() == {"status": "ok"}
+
             search_res = await client.get("/api/search", params={"q": "lord"})
             assert search_res.status_code == 200
             parsed_search = SearchResponse.model_validate(search_res.json())
