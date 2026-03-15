@@ -1,0 +1,33 @@
+# VCS
+.git
+.gitignore
+
+# Python caches and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local virtualenvs
+.venv/
+venv/
+
+# Local env/secrets
+.env
+.env.*
+secrets/
+
+# Local SQLite files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+data/
+backend/data/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
