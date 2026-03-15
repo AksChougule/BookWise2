@@ -1,13 +1,13 @@
 # BookWise 
 ## Never Miss the Big Ideas
 
-Books are amazing way to consume knowledge. Retaining that knowledge in our memory however is not an easy task. And if we can't retain the insights, it is harder to test these and put to use influencing our life positively.
+Books are an amazing way to consume knowledge, but retaining that knowledge is challenging. If we can't retain the insights, it becomes harder to test these ideas and apply them meaningfully in our lives.
 
-Research on the forgetting curve shows learners, within 24 hours forget an average of 70% of new information; and within a week, they forget up to 90% [soure](https://www.indegene.com/what-we-think/reports/understanding-science-behind-learning-retention)
+Research on the forgetting curve shows that within 24 hours, learners forget an average of 70% of new information, and within a week, they forget up to 90%. [source](https://www.indegene.com/what-we-think/reports/understanding-science-behind-learning-retention)
 
-I have repeatedly observed that while reading I find certain books highly insightful but later struggled to recall most of the insights. Talking about a book you liked with your friends and family members can help you retain some information for longer time but it will help you revise and remember only what you have retained at the time of a conversation.
+I have repeatedly experienced this myself - while reading, I find certain books highly insightful, but weeks later I struggle to recall most of what mattered. Discussing a book with friends and family can help you retain information longer, but you can only revisit what you've already remembered at the time of conversation. The insights you've forgotten remain lost.
 
-So I built BookWise, that helps refresh the memory so we do not forget the big ideas. This is not goodreads where you see the reviews. This is an attempt to offer a cleaner approach to spend quality time with your favourite books you and internalize the insights.
+That's why I built BookWise: to help you refresh your memory so the big ideas don't fade away. This isn't Goodreads where you browse reviews—it's a focused tool designed to help you spend quality time with your favorite books and truly internalize their insights.
 
 BookWise is a local full-stack web app that lets you search Open Library, open a book page, and automatically generate:
 
